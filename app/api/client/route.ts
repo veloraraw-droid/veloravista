@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAppUser } from "../../../lib/auth";
 import { createAdminSupabase, createServerSupabase } from "../../../lib/supabase/server";
+import { sendInternalCustomerUpdate, sendTransactionalEmail } from "../../../lib/transactional-email";
 
 export async function GET() {
   const user = await requireAppUser("/client-portal", ["client"]);
@@ -23,6 +24,7 @@ export async function POST(request: NextRequest) {
     if (signature.length < 2) return NextResponse.json({error:"Signature required"},{status:400});
     const { error } = await supabase.from("terms_acceptances").insert({ profile_id: user.id, document_version: "2026-08-07", document_title: "Velora Vista Client Portal Terms", signature_name: signature, user_agent: request.headers.get("user-agent") });
     if (error) return NextResponse.json({error:error.message},{status:400});
+    await sendInternalCustomerUpdate({subject:`Customer accepted portal terms — ${user.displayName}`,heading:"Portal terms accepted",details:[["Customer",user.displayName],["Email",user.email],["Signed name",signature],["Time",new Date().toLocaleString("en-CA")]],actionUrl:`${process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin}/admin-portal`});
     return NextResponse.json({ok:true});
   }
   if (body.action === "read_notification") {
@@ -38,7 +40,13 @@ export async function POST(request: NextRequest) {
     const signedAt=new Date().toISOString();
     const updated={...contract.data,status:"signed",signedName:signature,signedAt,signedBy:user.id,signedEmail:user.email,signerDisplayName:user.displayName};
     const {error}=await admin.from("operations").update({data:updated}).eq("id",contract.id);
-    if(error)return NextResponse.json({error:error.message},{status:400});return NextResponse.json({ok:true,contract:updated});
+    if(error)return NextResponse.json({error:error.message},{status:400});
+    const contractDetails: Array<[string, unknown]> = [["Contract",updated.number||updated.title||contract.id],["Customer",updated.client||user.displayName],["Signed by",signature],["Email",user.email],["Signed at",new Date(signedAt).toLocaleString("en-CA")]];
+    await Promise.all([
+      sendInternalCustomerUpdate({subject:`Contract signed — ${updated.number||updated.title||"Customer contract"}`,heading:"A customer signed a contract",details:contractDetails,actionUrl:`${process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin}/admin-portal`}),
+      sendTransactionalEmail({to:user.email,subject:`Contract signed: ${updated.number||updated.title||"Velora Vista agreement"}`,heading:"Your contract is signed",details:contractDetails,actionUrl:`${process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin}/client-portal?tab=contracts`,actionLabel:"View signed contract"}),
+    ]);
+    return NextResponse.json({ok:true,contract:updated});
   }
   if (["comment","approve","request_change","request_meeting"].includes(String(body.action))) {
     const message=String(body.message||"").trim();
@@ -48,6 +56,8 @@ export async function POST(request: NextRequest) {
     if(error)return NextResponse.json({error:error.message},{status:400});
     const {data:staff}=await admin.from("profiles").select("id").in("role",["owner","admin"]).eq("status","active");
     if(staff?.length)await admin.from("notifications").insert(staff.map(({id})=>({recipient_id:id,title:"New customer portal request",body:message,destination:"/admin-portal"})));
+    const title=type==="approve"?"Customer approval":type==="request_meeting"?"Meeting request":type==="request_change"?"Change request":"Customer comment";
+    await sendInternalCustomerUpdate({subject:`${title} — ${user.displayName}`,heading:title,details:[["Customer",user.displayName],["Email",user.email],["Message",message],["Related record",String(body.recordId||"General account")],["Time",new Date().toLocaleString("en-CA")]],actionUrl:`${process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin}/admin-portal`});
     return NextResponse.json({ok:true});
   }
   return NextResponse.json({error:"Unsupported action"},{status:400});
