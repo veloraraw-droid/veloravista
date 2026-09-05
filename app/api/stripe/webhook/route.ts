@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createAdminSupabase } from "../../../../lib/supabase/server";
+import { sendInternalCustomerUpdate } from "../../../../lib/transactional-email";
 
 export async function POST(request: Request) {
   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
@@ -27,6 +28,10 @@ export async function POST(request: Request) {
         stripeSubscriptionId: String(session.subscription || ""),
         stripePaymentIntentId: String(session.payment_intent || ""),
       } }).eq("id",operationId);
+      if (!current.data.data?.internalPaymentEmailSentAt) {
+        const sent = await sendInternalCustomerUpdate({subject:`Payment completed — ${current.data.data?.number || operationId}`,heading:isSubscription?"Customer subscription activated":"Customer payment completed",details:[["Invoice / plan",current.data.data?.number||current.data.data?.plan||operationId],["Customer",current.data.data?.client||current.data.data?.company||session.customer_details?.name||"Customer"],["Email",current.data.data?.email||session.customer_details?.email||session.customer_email||"Not supplied"],["Amount",session.amount_total==null?"See Stripe":`$${(session.amount_total/100).toFixed(2)} ${(session.currency||"cad").toUpperCase()}`],["Stripe session",session.id]],actionUrl:`${process.env.NEXT_PUBLIC_SITE_URL || "https://www.veloravistavisuals.com"}/admin-portal`});
+        if (sent) await admin.from("operations").update({data:{...current.data.data,status:isSubscription?"active":"paid",paidAt:new Date().toISOString(),stripeCustomerId:String(session.customer||""),stripeSubscriptionId:String(session.subscription||""),stripePaymentIntentId:String(session.payment_intent||""),internalPaymentEmailSentAt:new Date().toISOString()}}).eq("id",operationId);
+      }
     }
   }
   if (operationId && (event.type === "customer.subscription.updated" || event.type === "customer.subscription.deleted")) {
