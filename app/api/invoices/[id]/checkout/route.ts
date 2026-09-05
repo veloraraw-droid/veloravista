@@ -21,6 +21,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   try {
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
+      managed_payments: { enabled: false },
       customer_email: String(invoice.data?.email || "") || undefined,
       line_items: [{ price_data: { currency: "cad", unit_amount: Math.round(total * 100), product_data: { name: String(invoice.data?.number || "Velora Vista invoice"), description: String(invoice.data?.description || "Creative services").slice(0, 500) } }, quantity: 1 }],
       metadata: { operation_id: invoice.id, company_id: invoice.company_id || "", invoice_number: String(invoice.data?.number || "") },
