@@ -231,6 +231,14 @@ export function AdminPortal({
     if (!r.ok) { notify("Could not update this record."); return; }
     await load(); setModal(""); notify("Updated everywhere in real time.");
   }
+  async function resendInvoice(record: Rec) {
+    if (!record.data.email) { notify("Add a customer email to this invoice first."); return; }
+    const r = await fetch(`/api/invoices/${record.id}/resend`, { method: "POST" });
+    const result = await r.json();
+    if (!r.ok) { notify(result.error || "Could not resend the invoice email."); return; }
+    await load();
+    notify(`Invoice email resent to ${result.email}.`);
+  }
   async function accountAction(email: string, action: string, permissions?: string) {
     const r = await fetch("/api/accounts", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email, action, permissions }) });
     const result = await r.json(); if (!r.ok) { notify(result.error || "Account change failed."); return false; }
@@ -1082,14 +1090,10 @@ export function AdminPortal({
                     <span className={`status-pill ${x.data.status}`}>
                       {x.data.status}
                     </span>
-                    <button
-                      onClick={() => {
-                        setSelected(x);
-                        setModal("invoiceview");
-                      }}
-                    >
-                      Open ↗
-                    </button>
+                    <div className="invoice-row-actions">
+                      <button onClick={() => { setSelected(x); setModal("invoiceview"); }}>Open ↗</button>
+                      <button onClick={() => void resendInvoice(x)}>Resend email ↗</button>
+                    </div>
                   </article>
                 ))}
               </div>
