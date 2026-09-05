@@ -170,6 +170,17 @@ export function AdminPortal({
     setLoading(false);
   }, []);
   useEffect(() => {
+    const root = document.documentElement;
+    const previousTheme = root.dataset.theme;
+    root.dataset.theme = "light";
+    root.style.colorScheme = "light";
+    return () => {
+      if (previousTheme) root.dataset.theme = previousTheme;
+      else delete root.dataset.theme;
+      root.style.removeProperty("color-scheme");
+    };
+  }, []);
+  useEffect(() => {
     void load();
   }, [load]);
   useEffect(() => {
