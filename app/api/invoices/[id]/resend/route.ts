@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
 import { createAdminSupabase, createServerSupabase } from "../../../../../lib/supabase/server";
-import { signInvoiceId } from "../../../../../lib/invoice-links";
 import { canAccessModule } from "../../../../../lib/permissions";
 
 function escapeHtml(value: unknown) {
@@ -25,8 +24,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (!email) return NextResponse.json({ error: "This invoice has no customer email" }, { status: 400 });
 
   const origin = process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin;
-  const token = await signInvoiceId(id);
-  const publicInvoiceUrl = `${origin}/invoice/${id}?token=${token}`;
+  const publicInvoiceUrl = `${origin}/client-portal?tab=billing&invoice=${id}`;
   const total = Number(invoice.data?.total || 0);
   const resend = new Resend(process.env.RESEND_API_KEY);
   const result = await resend.emails.send({

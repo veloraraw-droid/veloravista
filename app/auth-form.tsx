@@ -10,7 +10,9 @@ export function AuthForm({ team = false }: { team?: boolean }) {
     const form = new FormData(e.currentTarget);
     const email = String(form.get("email") || "").trim().toLowerCase();
     const password = String(form.get("password") || "");
-    const next = team ? "/admin-portal" : "/client-portal";
+    const requestedNext = new URLSearchParams(location.search).get("next") || "";
+    const allowedNext = requestedNext.startsWith("/") && !requestedNext.startsWith("//") ? requestedNext : "";
+    const next = team ? "/admin-portal" : allowedNext.startsWith("/client-portal") ? allowedNext : "/client-portal";
     const access = await fetch("/api/auth/access", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email, portal: team ? "team" : "client" }) });
     const eligibility = await access.json().catch(() => ({ allowed: false }));
     if (!eligibility.allowed) {

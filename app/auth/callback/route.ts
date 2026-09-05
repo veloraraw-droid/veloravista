@@ -16,6 +16,12 @@ export async function GET(request: NextRequest) {
     await supabase.auth.signOut();
     return NextResponse.redirect(new URL("/login?error=This%20account%20is%20not%20approved%20for%20portal%20access", url.origin));
   }
-  const destination = profile.role === "client" ? "/client-portal" : ["owner", "admin", "team"].includes(profile.role) ? "/admin-portal" : "/login";
+  const requestedNext = url.searchParams.get("next") || "";
+  const safeNext = requestedNext.startsWith("/") && !requestedNext.startsWith("//") ? requestedNext : "";
+  const destination = profile.role === "client"
+    ? (safeNext.startsWith("/client-portal") ? safeNext : "/client-portal")
+    : ["owner", "admin", "team"].includes(profile.role)
+      ? (safeNext.startsWith("/admin-portal") ? safeNext : "/admin-portal")
+      : "/login";
   return NextResponse.redirect(new URL(destination, url.origin));
 }

@@ -10,11 +10,13 @@ type RecordItem = {
   status: string;
   updated_at: string;
 };
-export function ClientWorkspace() {
-  const [tab, setTab] = useState("overview"),
+export function ClientWorkspace({ initialTab, initialInvoiceId, paymentResult, sessionId }: { initialTab?: string; initialInvoiceId?: string; paymentResult?: string; sessionId?: string }) {
+  const [tab, setTab] = useState(initialTab === "billing" ? "billing" : "overview"),
     [payload, setPayload] = useState<any>(null),
     [busy, setBusy] = useState(true),
-    [selectedInvoice, setSelectedInvoice] = useState<RecordItem|null>(null);
+    [selectedInvoice, setSelectedInvoice] = useState<RecordItem|null>(null),
+    [paymentNotice, setPaymentNotice] = useState(paymentResult === "cancelled" ? "Payment was not completed or was declined. Please try again." : ""),
+    [paymentLinks, setPaymentLinks] = useState<{invoiceUrl?:string;invoicePdf?:string;receiptUrl?:string}>({});
   const load = useCallback(async () => {
     const r = await fetch("/api/client");
     if (r.ok) setPayload(await r.json());
@@ -58,6 +60,23 @@ export function ClientWorkspace() {
         new Date(a.data.start).getTime() - new Date(b.data.start).getTime(),
     );
   const latest = useMemo(() => projects[0], [projects]);
+  useEffect(() => {
+    if (!initialInvoiceId || !payload?.records) return;
+    const invoice = payload.records.find((item: RecordItem) => item.kind === "invoice" && item.id === initialInvoiceId);
+    if (invoice) { setTab("billing"); setSelectedInvoice(invoice); }
+  }, [initialInvoiceId, payload]);
+  useEffect(() => {
+    if (paymentResult !== "success" || !initialInvoiceId || !sessionId) return;
+    void fetch(`/api/invoices/${initialInvoiceId}/status?session_id=${encodeURIComponent(sessionId)}`)
+      .then(async (response) => ({ ok: response.ok, body: await response.json() }))
+      .then(({ ok, body }) => {
+        if (!ok || body.status !== "paid") { setPaymentNotice("Payment could not be confirmed. Please contact us if your card was charged."); return; }
+        setPaymentNotice("Payment completed successfully. Your paid invoice and receipt are ready.");
+        setPaymentLinks({ invoiceUrl: body.invoiceUrl, invoicePdf: body.invoicePdf, receiptUrl: body.receiptUrl });
+        void load();
+      })
+      .catch(() => setPaymentNotice("Payment confirmation is taking longer than expected. Please refresh shortly."));
+  }, [paymentResult, initialInvoiceId, sessionId, load]);
   async function accept(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
@@ -287,6 +306,7 @@ export function ClientWorkspace() {
                 <h2>Invoices & subscription</h2>
               </div>
             </div>
+            {paymentNotice && <div className={`payment-result ${paymentNotice.startsWith("Payment completed") ? "success" : "warning"}`} role="status"><b>{paymentNotice}</b>{paymentLinks.invoiceUrl&&<a href={paymentLinks.invoiceUrl} target="_blank" rel="noreferrer">View Stripe invoice ↗</a>}{paymentLinks.invoicePdf&&<a href={paymentLinks.invoicePdf} target="_blank" rel="noreferrer">Download invoice PDF ↓</a>}{paymentLinks.receiptUrl&&<a href={paymentLinks.receiptUrl} target="_blank" rel="noreferrer">View receipt ↗</a>}</div>}
             {invoices.map((x: RecordItem) => (
               <div className="file-project" key={x.id}>
                 <span>INV</span>
@@ -450,7 +470,7 @@ export function ClientWorkspace() {
           </section>
         )}
       </section>
-      {selectedInvoice&&<div className="portal-modal invoice-portal-modal" role="dialog" aria-modal="true" aria-label={`Invoice ${selectedInvoice.data.number}`}><section><button className="modal-close" onClick={()=>setSelectedInvoice(null)}>Close ×</button><InvoiceDocument invoice={selectedInvoice.data}/><div className="invoice-client-actions"><button onClick={()=>printInvoice(selectedInvoice.data)}>Print / save PDF</button>{selectedInvoice.data.publicInvoiceUrl?<a href={selectedInvoice.data.publicInvoiceUrl}>Pay now ↗</a>:selectedInvoice.data.paymentLink&&<a href={selectedInvoice.data.paymentLink}>Pay securely ↗</a>}</div></section></div>}
+      {selectedInvoice&&<div className="portal-modal invoice-portal-modal" role="dialog" aria-modal="true" aria-label={`Invoice ${selectedInvoice.data.number}`}><section><button className="modal-close" onClick={()=>setSelectedInvoice(null)}>Close ×</button><InvoiceDocument invoice={selectedInvoice.data}/><div className="invoice-client-actions"><button onClick={()=>printInvoice(selectedInvoice.data)}>Print / save PDF</button>{selectedInvoice.data.status==="paid"?<>{selectedInvoice.data.stripeInvoiceUrl&&<a href={selectedInvoice.data.stripeInvoiceUrl} target="_blank" rel="noreferrer">View paid invoice ↗</a>}{selectedInvoice.data.receiptUrl&&<a href={selectedInvoice.data.receiptUrl} target="_blank" rel="noreferrer">View receipt ↗</a>}</>:<form action={`/api/invoices/${selectedInvoice.id}/checkout`} method="post"><button type="submit">Pay now ↗</button></form>}</div></section></div>}
     </main>
   );
 }

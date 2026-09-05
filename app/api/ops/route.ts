@@ -155,9 +155,7 @@ export async function POST(request: NextRequest) {
   if (kind === "invoice" && data.email && Number(data.total) > 0) {
     try {
       const origin = process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin;
-      const { signInvoiceId } = await import("../../../lib/invoice-links");
-      const invoiceToken = await signInvoiceId(record.id);
-      const publicInvoiceUrl = `${origin}/invoice/${record.id}?token=${invoiceToken}`;
+      const publicInvoiceUrl = `${origin}/client-portal?tab=billing&invoice=${record.id}`;
       const invoiceData = { ...data, publicInvoiceUrl, status: "sent" };
       await auth.supabase.from("operations").update({ data: invoiceData, updated_by: auth.profile.id }).eq("id", record.id);
       if (process.env.RESEND_API_KEY) {
