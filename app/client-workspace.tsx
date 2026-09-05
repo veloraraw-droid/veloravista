@@ -15,6 +15,8 @@ export function ClientWorkspace({ initialTab, initialInvoiceId, paymentResult, s
     [payload, setPayload] = useState<any>(null),
     [busy, setBusy] = useState(true),
     [selectedInvoice, setSelectedInvoice] = useState<RecordItem|null>(null),
+    [selectedContract, setSelectedContract] = useState<RecordItem|null>(null),
+    [contractNotice, setContractNotice] = useState(""),
     [paymentNotice, setPaymentNotice] = useState(paymentResult === "cancelled" ? "Payment was not completed or was declined. Please try again." : ""),
     [paymentLinks, setPaymentLinks] = useState<{invoiceUrl?:string;invoicePdf?:string;receiptUrl?:string}>({});
   const load = useCallback(async () => {
@@ -90,18 +92,23 @@ export function ClientWorkspace({ initialTab, initialInvoiceId, paymentResult, s
     });
     if (r.ok) void load();
   }
-  async function signContract(x: RecordItem) {
-    const signature = prompt(
-      "Type your full legal name to sign this agreement",
-    );
-    if (!signature) return;
+  async function signContract(e: FormEvent<HTMLFormElement>, x: RecordItem) {
+    e.preventDefault();
+    const form = new FormData(e.currentTarget);
+    const signature = String(form.get("signature") || "").trim();
+    if (signature.length < 2) return setContractNotice("Enter your full legal name to sign.");
+    setContractNotice("Signing contract…");
     const r = await fetch("/api/client", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ action: "sign_contract", id: x.id, signature }),
     });
-    if (r.ok) void load();
-    else alert((await r.json()).error || "Could not sign this agreement");
+    const result = await r.json();
+    if (r.ok) {
+      setSelectedContract({...x, data: result.contract});
+      setContractNotice("Contract signed successfully. A permanent signing record is now available to you and the Velora Vista team.");
+      void load();
+    } else setContractNotice(result.error || "Could not sign this agreement");
   }
   async function readNotification(id: string) {
     await fetch("/api/client", {
@@ -354,13 +361,9 @@ export function ClientWorkspace({ initialTab, initialInvoiceId, paymentResult, s
                       : ""}
                   </p>
                 </div>
-                {x.data.status === "signed" ? (
-                  <b>Signed ✓</b>
-                ) : (
-                  <button onClick={() => void signContract(x)}>
-                    Review & sign ↗
-                  </button>
-                )}
+                <button onClick={() => { setContractNotice(""); setSelectedContract(x); }}>
+                  {x.data.status === "signed" ? "View signed contract ↗" : "Review & sign ↗"}
+                </button>
               </div>
             ))}
           </section>
@@ -471,6 +474,7 @@ export function ClientWorkspace({ initialTab, initialInvoiceId, paymentResult, s
         )}
       </section>
       {selectedInvoice&&<div className="portal-modal invoice-portal-modal" role="dialog" aria-modal="true" aria-label={`Invoice ${selectedInvoice.data.number}`}><section><button className="modal-close" onClick={()=>setSelectedInvoice(null)}>Close ×</button><InvoiceDocument invoice={selectedInvoice.data}/><div className="invoice-client-actions"><button onClick={()=>printInvoice(selectedInvoice.data)}>Print / save PDF</button>{selectedInvoice.data.status==="paid"?<>{selectedInvoice.data.stripeInvoiceUrl&&<a href={selectedInvoice.data.stripeInvoiceUrl} target="_blank" rel="noreferrer">View paid invoice ↗</a>}{selectedInvoice.data.receiptUrl&&<a href={selectedInvoice.data.receiptUrl} target="_blank" rel="noreferrer">View receipt ↗</a>}</>:<form action={`/api/invoices/${selectedInvoice.id}/checkout`} method="post"><button type="submit">Pay now ↗</button></form>}</div></section></div>}
+      {selectedContract&&<div className="portal-modal invoice-portal-modal contract-review-modal" role="dialog" aria-modal="true" aria-label={`Contract ${selectedContract.data.number}`}><section><button className="modal-close" onClick={()=>setSelectedContract(null)}>Close ×</button><div className="contract-document"><small>{selectedContract.data.number} · {selectedContract.data.status}</small><h2>{selectedContract.data.title}</h2><p>Prepared for <b>{selectedContract.data.client}</b></p><div>{selectedContract.data.terms||"This contract is awaiting agreement language from Velora Vista Visuals Ltd."}</div><footer>Velora Vista Visuals Ltd. · Electronic signature required</footer></div>{selectedContract.data.status==="signed"?<div className="contract-signature-record"><small>SIGNATURE RECORD</small><b>{selectedContract.data.signedName||"Signed electronically"}</b>{selectedContract.data.signedEmail&&<span>{selectedContract.data.signedEmail}</span>}<time>{selectedContract.data.signedAt?new Date(selectedContract.data.signedAt).toLocaleString("en-CA"):""}</time><span>Contract {selectedContract.data.number}</span></div>:<form className="contract-sign-form" onSubmit={(e)=>void signContract(e,selectedContract)}><p>Read the full contract above. Enter your full legal name to sign electronically.</p><label>Full legal name<input name="signature" autoComplete="name" required minLength={2}/></label><button type="submit">Sign contract ↗</button></form>}{contractNotice&&<p className="contract-notice" role="status">{contractNotice}</p>}</section></div>}
     </main>
   );
 }

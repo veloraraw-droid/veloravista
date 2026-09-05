@@ -1578,6 +1578,7 @@
   padding-top: 18px;
   font-size: 9px;
 }
+.contract-signature-record{display:grid;gap:7px;margin-top:16px;padding:20px;border:1px solid #b7b7af;background:#f7f7f2}.contract-signature-record small{font-size:8px;letter-spacing:.15em;color:#666}.contract-signature-record b{font-size:18px}.contract-signature-record span,.contract-signature-record time{font-size:10px;color:#555}.contract-sign-form{margin-top:16px!important;width:100%!important;padding:24px!important;border:1px solid #bbb}.contract-sign-form p{font-size:11px!important;line-height:1.5}.contract-notice{margin:14px 0 0;padding:12px;background:#e7f5cf;font-size:10px}.contract-review-modal>section{max-width:900px}.contract-review-modal .contract-document{color:#111}
 .record-detail {
   font-size: 11px;
   line-height: 1.7;

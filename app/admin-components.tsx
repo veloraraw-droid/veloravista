@@ -1008,7 +1008,9 @@ export function AdminPortal({
                     <div>
                       <b>{x.data.title}</b>
                       <p>
-                        {x.data.client} · Due {x.data.deadline || "not set"}
+                        {x.data.status === "signed"
+                          ? `Signed by ${x.data.signedName || x.data.signerDisplayName || x.data.signedEmail || "customer"}${x.data.signedAt ? ` · ${day(x.data.signedAt)}` : ""}`
+                          : `${x.data.client} · Due ${x.data.deadline || "not set"}`}
                       </p>
                     </div>
                     <span className={`status-pill ${x.data.status}`}>
@@ -2055,6 +2057,15 @@ export function AdminPortal({
               Velora Vista Visuals Ltd. · Electronic signature required
             </footer>
           </div>
+          {selected.data.status === "signed" && (
+            <div className="contract-signature-record">
+              <small>SIGNATURE RECORD</small>
+              <b>{selected.data.signedName || selected.data.signerDisplayName || "Signed electronically"}</b>
+              {selected.data.signedEmail && <span>{selected.data.signedEmail}</span>}
+              {selected.data.signedAt && <time>{day(selected.data.signedAt)}</time>}
+              <span>Contract {selected.data.number} · Record {selected.id}</span>
+            </div>
+          )}
           <div className="account-actions">
             <button onClick={() => window.print()}>Print / download PDF</button>
             <a

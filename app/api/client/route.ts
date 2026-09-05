@@ -35,8 +35,10 @@ export async function POST(request: NextRequest) {
     const {data:contract}=await supabase.from("operations").select("id,data").eq("id",String(body.id)).eq("kind","contract").single();
     if(!contract)return NextResponse.json({error:"Contract not found"},{status:404});
     const admin=createAdminSupabase();
-    const {error}=await admin.from("operations").update({data:{...contract.data,status:"signed",signedName:signature,signedAt:new Date().toISOString(),signedBy:user.id}}).eq("id",contract.id);
-    if(error)return NextResponse.json({error:error.message},{status:400});return NextResponse.json({ok:true});
+    const signedAt=new Date().toISOString();
+    const updated={...contract.data,status:"signed",signedName:signature,signedAt,signedBy:user.id,signedEmail:user.email,signerDisplayName:user.displayName};
+    const {error}=await admin.from("operations").update({data:updated}).eq("id",contract.id);
+    if(error)return NextResponse.json({error:error.message},{status:400});return NextResponse.json({ok:true,contract:updated});
   }
   if (["comment","approve","request_change","request_meeting"].includes(String(body.action))) {
     const message=String(body.message||"").trim();
