@@ -17,7 +17,7 @@ export function ClientWorkspace({ initialTab, initialInvoiceId, paymentResult, s
     [selectedInvoice, setSelectedInvoice] = useState<RecordItem|null>(null),
     [selectedContract, setSelectedContract] = useState<RecordItem|null>(null),
     [contractNotice, setContractNotice] = useState(""),
-    [paymentNotice, setPaymentNotice] = useState(paymentResult === "cancelled" ? "Payment was not completed or was declined. Please try again." : ""),
+    [paymentNotice, setPaymentNotice] = useState(paymentResult === "cancelled" ? "Payment was not completed or was declined. Please try again." : paymentResult === "failed" ? "Stripe checkout could not be opened. Please try again or contact the studio." : ""),
     [paymentLinks, setPaymentLinks] = useState<{invoiceUrl?:string;invoicePdf?:string;receiptUrl?:string}>({});
   const load = useCallback(async () => {
     const r = await fetch("/api/client");
