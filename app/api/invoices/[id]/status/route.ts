@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import { Resend } from "resend";
 import { getAppUser } from "../../../../../lib/auth";
 import { createAdminSupabase } from "../../../../../lib/supabase/server";
+import { sendInternalCustomerUpdate } from "../../../../../lib/transactional-email";
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getAppUser();
@@ -32,6 +33,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       const destination = invoiceUrl || `${process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin}/client-portal?tab=billing&invoice=${id}`;
       const result = await resend.emails.send({ from: "Velora Vista Visuals <info@veloravistavisuals.com>", to: String(invoice.data?.email || user.email), subject: `Payment received for invoice ${invoice.data?.number || ""}`, html: `<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;padding:40px;color:#111"><h1>PAYMENT RECEIVED</h1><p>Thank you. Your payment for invoice <b>${String(invoice.data?.number || "")}</b> is complete.</p><a href="${destination}" style="display:inline-block;background:#dfff00;color:#111;padding:16px 24px;text-decoration:none;font-weight:bold">View paid invoice ↗</a></div>` });
       if (!result.error) Object.assign(paidData, { receiptEmailSentAt: new Date().toISOString(), receiptEmailId: result.data?.id });
+    }
+    if (!invoice.data?.internalPaymentEmailSentAt) {
+      const sent = await sendInternalCustomerUpdate({subject:`Payment completed — ${invoice.data?.number || id}`,heading:"Customer payment completed",details:[["Invoice",invoice.data?.number||id],["Customer",invoice.data?.client||user.displayName],["Email",invoice.data?.email||user.email],["Amount",`$${Number(invoice.data?.total||0).toFixed(2)} CAD`],["Stripe session",session.id],["Paid at",new Date(paidData.paidAt).toLocaleString("en-CA")]],actionUrl:`${process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin}/admin-portal`});
+      if (sent) Object.assign(paidData, { internalPaymentEmailSentAt: new Date().toISOString() });
     }
     await admin.from("operations").update({ data: paidData }).eq("id", id);
   }
