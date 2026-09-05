@@ -59,6 +59,7 @@
   min-height: 100vh;
   background: #e9e9e4;
   color: #111;
+  color-scheme: light;
   display: grid;
   grid-template-columns: 245px 1fr;
 }
