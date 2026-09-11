@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createAdminSupabase } from "../../../../lib/supabase/server";
-import { sendInternalCustomerUpdate } from "../../../../lib/transactional-email";
+import { sendInternalCustomerUpdate, sendTransactionalEmail } from "../../../../lib/transactional-email";
 
 export async function POST(request: Request) {
   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
@@ -31,6 +31,20 @@ export async function POST(request: Request) {
       if (!current.data.data?.internalPaymentEmailSentAt) {
         const sent = await sendInternalCustomerUpdate({subject:`Payment completed — ${current.data.data?.number || operationId}`,heading:isSubscription?"Customer subscription activated":"Customer payment completed",details:[["Invoice / plan",current.data.data?.number||current.data.data?.plan||operationId],["Customer",current.data.data?.client||current.data.data?.company||session.customer_details?.name||"Customer"],["Email",current.data.data?.email||session.customer_details?.email||session.customer_email||"Not supplied"],["Amount",session.amount_total==null?"See Stripe":`$${(session.amount_total/100).toFixed(2)} ${(session.currency||"cad").toUpperCase()}`],["Stripe session",session.id]],actionUrl:`${process.env.NEXT_PUBLIC_SITE_URL || "https://www.veloravistavisuals.com"}/admin-portal`});
         if (sent) await admin.from("operations").update({data:{...current.data.data,status:isSubscription?"active":"paid",paidAt:new Date().toISOString(),stripeCustomerId:String(session.customer||""),stripeSubscriptionId:String(session.subscription||""),stripePaymentIntentId:String(session.payment_intent||""),internalPaymentEmailSentAt:new Date().toISOString()}}).eq("id",operationId);
+      }
+      const customerEmail = String(current.data.data?.email || session.customer_details?.email || session.customer_email || "").trim();
+      if (customerEmail && !current.data.data?.customerPaymentEmailSentAt) {
+        const latest = await admin.from("operations").select("data").eq("id", operationId).single();
+        const latestData = latest.data?.data || current.data.data;
+        const sent = await sendTransactionalEmail({
+          to: customerEmail,
+          subject: `Payment confirmed — ${current.data.data?.number || current.data.data?.plan || "Velora Vista Visuals"}`,
+          heading: isSubscription ? "Your plan is active" : "Your payment is confirmed",
+          details: [["Invoice / plan", current.data.data?.number || current.data.data?.plan || operationId], ["Amount", session.amount_total == null ? "Confirmed in Stripe" : `$${(session.amount_total / 100).toFixed(2)} ${(session.currency || "cad").toUpperCase()}`], ["Status", isSubscription ? "Active" : "Paid"]],
+          actionUrl: `${process.env.NEXT_PUBLIC_SITE_URL || "https://www.veloravistavisuals.com"}/client-portal?tab=billing`,
+          actionLabel: "Open billing centre",
+        });
+        if (sent) await admin.from("operations").update({ data: { ...latestData, status: isSubscription ? "active" : "paid", paidAt: new Date().toISOString(), stripeCustomerId: String(session.customer || ""), stripeSubscriptionId: String(session.subscription || ""), stripePaymentIntentId: String(session.payment_intent || ""), customerPaymentEmailSentAt: new Date().toISOString() } }).eq("id", operationId);
       }
     }
   }

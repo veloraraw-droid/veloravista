@@ -5,6 +5,7 @@ import Stripe from "stripe";
 import { Resend } from "resend";
 import { sendPortalInvitation } from "../../../lib/auth-email";
 import { canAccessModule, moduleForKind } from "../../../lib/permissions";
+import { sendTransactionalEmail } from "../../../lib/transactional-email";
 
 const bodySchema = z.object({ kind: z.string().min(1).max(64), data: z.record(z.string(), z.unknown()) });
 const patchSchema = z.object({ id: z.string().uuid(), data: z.record(z.string(), z.unknown()), status: z.string().optional() });
@@ -74,6 +75,7 @@ export async function POST(request: NextRequest) {
   const parsed = bodySchema.safeParse(await request.json());
   if (!parsed.success) return NextResponse.json({ error: "Invalid record" }, { status: 400 });
   const { kind, data } = parsed.data;
+  let deliveryWarning = "";
   if (!canUse(auth.profile, kind)) return NextResponse.json({ error: "You do not have permission to use this area" }, { status: 403 });
   if (kind === "booking" || kind === "meeting") {
     const calendar = calendarPayload(data);
@@ -158,14 +160,33 @@ export async function POST(request: NextRequest) {
       const publicInvoiceUrl = `${origin}/client-portal?tab=billing&invoice=${record.id}`;
       const invoiceData = { ...data, publicInvoiceUrl, status: "sent" };
       await auth.supabase.from("operations").update({ data: invoiceData, updated_by: auth.profile.id }).eq("id", record.id);
-      if (process.env.RESEND_API_KEY) {
-        const resend = new Resend(process.env.RESEND_API_KEY);
-        await resend.emails.send({ from: "Velora Vista Visuals <info@veloravistavisuals.com>", to: String(data.email), subject: `Invoice ${data.number} from Velora Vista Visuals Ltd.`, html: `<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;padding:40px;color:#111"><h1 style="font-size:34px">VELORA VISTA VISUALS</h1><p>Invoice <b>${escapeHtml(data.number)}</b> is ready.</p><p style="font-size:28px"><b>$${Number(data.total).toFixed(2)} CAD</b></p><p>${escapeHtml(data.description || "")}</p><a href="${escapeHtml(publicInvoiceUrl)}" style="display:inline-block;background:#dfff00;color:#111;padding:16px 24px;text-decoration:none;font-weight:bold">View invoice details ↗</a><p style="margin-top:32px">Review the invoice on our website, then choose Pay now to continue securely to Stripe.</p><p>Questions? Call 778-820-0485 or reply to this email.</p></div>` });
-      }
+      const sent = await sendTransactionalEmail({
+        to: String(data.email),
+        subject: `Invoice ${data.number} from Velora Vista Visuals Ltd.`,
+        heading: "Your invoice is ready",
+        details: [["Invoice", data.number], ["Amount", `$${Number(data.total).toFixed(2)} CAD`], ["Service", data.description || "Creative production services"]],
+        actionUrl: publicInvoiceUrl,
+        actionLabel: "View invoice & pay",
+      });
+      if (!sent) deliveryWarning = "Invoice saved, but the customer email was not delivered. Use Resend email to try again.";
     } catch (billingError) {
       await auth.supabase.from("operations").update({ data: { ...data, billingStatus: "needs_retry", billingError: billingError instanceof Error ? billingError.message : "Payment link failed" }, updated_by: auth.profile.id }).eq("id", record.id);
       return NextResponse.json({ id: record.id, warning: "Invoice saved; payment link or email needs retry" }, { status: 202 });
     }
+  }
+  if (kind === "contract" && data.email) {
+    const origin = process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin;
+    const contractUrl = `${origin}/client-portal?tab=contracts&contract=${record.id}`;
+    const sent = await sendTransactionalEmail({
+      to: String(data.email),
+      subject: `Contract ${data.number || ""} from Velora Vista Visuals Ltd.`,
+      heading: "Your contract is ready to review",
+      details: [["Contract", data.number || data.title], ["Prepared for", data.client || "Client"], ["Status", data.status || "Awaiting signature"]],
+      actionUrl: contractUrl,
+      actionLabel: "Review & sign contract",
+    });
+    await auth.supabase.from("operations").update({ data: { ...data, contractUrl, emailStatus: sent ? "sent" : "failed", lastEmailSentAt: sent ? new Date().toISOString() : null } }).eq("id", record.id);
+    if (!sent) deliveryWarning = "Contract saved, but the customer email was not delivered.";
   }
   if (kind === "subscription") {
     try {
@@ -197,6 +218,16 @@ export async function POST(request: NextRequest) {
         data: { ...data, status: "pending_checkout", paymentLink: session.url, stripeCheckoutSessionId: session.id },
         updated_by: auth.profile.id,
       }).eq("id", record.id);
+      const sent = Boolean(session.url) && await sendTransactionalEmail({
+        to: String(data.email),
+        subject: `Payment setup for ${data.plan || "your Velora Vista plan"}`,
+        heading: "Your secure payment link is ready",
+        details: [["Plan", data.plan || "Creative partnership"], ["Amount", `$${Number(data.price).toFixed(2)} CAD`], ["Billing", data.billing || "Monthly"]],
+        actionUrl: session.url || undefined,
+        actionLabel: "Complete secure payment",
+      });
+      await auth.supabase.from("operations").update({ data: { ...data, status: "pending_checkout", paymentLink: session.url, stripeCheckoutSessionId: session.id, paymentRequestEmailStatus: sent ? "sent" : "failed", paymentRequestEmailSentAt: sent ? new Date().toISOString() : null } }).eq("id", record.id);
+      if (!sent) deliveryWarning = "Subscription was saved, but the payment-request email was not delivered.";
     } catch (billingError) {
       await auth.supabase.from("operations").update({
         data: { ...data, status: "needs_retry", billingError: billingError instanceof Error ? billingError.message : "Subscription checkout failed" },
@@ -205,7 +236,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ id: record.id, warning: "Subscription saved; checkout link needs retry" }, { status: 202 });
     }
   }
-  return NextResponse.json({ id: record.id });
+  return NextResponse.json({ id: record.id, warning: deliveryWarning || undefined });
 }
 
 export async function PATCH(request: NextRequest) {

@@ -5,6 +5,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { Logo } from "./components";
@@ -149,6 +150,7 @@ export function AdminPortal({
   const [tab, setTab] = useState("overview"),
     [modal, setModal] = useState(""),
     [toast, setToast] = useState(""),
+    [actionStatus, setActionStatus] = useState<{ phase: "working" | "success" | "error"; message: string } | null>(null),
     [records, setRecords] = useState<Rec[]>([]),
     [loading, setLoading] = useState(true),
     [calendarMode, setCalendarMode] = useState("week"),
@@ -160,6 +162,7 @@ export function AdminPortal({
     [chatChannel, setChatChannel] = useState("studio"),
     [selected, setSelected] = useState<Rec | null>(null),
     [customerSection, setCustomerSection] = useState("snapshot");
+  const actionLock = useRef(false);
   const load = useCallback(async () => {
     setLoading(true);
     const r = await fetch("/api/ops");
@@ -213,19 +216,32 @@ export function AdminPortal({
     setToast(x);
     setTimeout(() => setToast(""), 3200);
   };
+  const beginAction = (message: string) => {
+    if (actionLock.current) return false;
+    actionLock.current = true;
+    setActionStatus({ phase: "working", message });
+    return true;
+  };
+  const finishAction = (message: string, ok = true) => {
+    actionLock.current = false;
+    setActionStatus({ phase: ok ? "success" : "error", message });
+    window.setTimeout(() => setActionStatus(null), ok ? 1500 : 3200);
+  };
   async function create(kind: string, data: Record<string, any>) {
+    if (!beginAction(kind === "contract" ? "Sending the contract…" : kind === "invoice" ? "Creating and emailing the invoice…" : kind === "subscription" ? "Creating and emailing the payment request…" : "Saving your update…")) return false;
     const r = await fetch("/api/ops", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ kind, data }),
     });
+    const result = await r.json().catch(() => ({}));
     if (!r.ok) {
-      notify("Could not save this record.");
+      finishAction(result.error || "Could not save this record.", false);
       return false;
     }
     await load();
     setModal("");
-    notify("Saved and synced for the team.");
+    finishAction(result.warning || "Saved successfully. Only one request was sent.", !result.warning);
     return true;
   }
   async function remove(id: string) {
@@ -238,17 +254,19 @@ export function AdminPortal({
     notify("Record removed.");
   }
   async function update(record: Rec, changes: Record<string, any>, status?: string) {
+    if (!beginAction("Updating this item…")) return;
     const r = await fetch("/api/ops", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: record.id, data: { ...record.data, ...changes }, status }) });
-    if (!r.ok) { notify("Could not update this record."); return; }
-    await load(); setModal(""); notify("Updated everywhere in real time.");
+    if (!r.ok) { finishAction("Could not update this record.", false); return; }
+    await load(); setModal(""); finishAction("Updated everywhere in real time.");
   }
   async function resendInvoice(record: Rec) {
     if (!record.data.email) { notify("Add a customer email to this invoice first."); return; }
+    if (!beginAction(`Sending invoice to ${record.data.email}…`)) return;
     const r = await fetch(`/api/invoices/${record.id}/resend`, { method: "POST" });
     const result = await r.json();
-    if (!r.ok) { notify(result.error || "Could not resend the invoice email."); return; }
+    if (!r.ok) { finishAction(result.error || "Could not resend the invoice email.", false); return; }
     await load();
-    notify(`Invoice email resent to ${result.email}.`);
+    finishAction(`Invoice email sent once to ${result.email}.`);
   }
   async function accountAction(email: string, action: string, permissions?: string) {
     const r = await fetch("/api/accounts", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email, action, permissions }) });
@@ -259,6 +277,8 @@ export function AdminPortal({
     (kind: string, map: (f: FormData) => Record<string, any>) =>
     (e: FormEvent<HTMLFormElement>) => {
       e.preventDefault();
+      if (actionLock.current) return;
+      setModal("");
       void create(kind, map(new FormData(e.currentTarget)));
     };
   const invoiceNo = `VLV-${new Date().getFullYear()}-${String(invoices.length + 1).padStart(4, "0")}`;
@@ -332,7 +352,7 @@ export function AdminPortal({
     setCalendarDate(d);
   };
   return (
-    <main className="admin-shell">
+    <main className={`admin-shell${actionStatus ? " action-active" : ""}`}>
       <aside className="admin-side">
         <Logo dark />
         <div className="admin-badge">LIVE OPS</div>
@@ -362,6 +382,7 @@ export function AdminPortal({
           </div>
           <div className="admin-top-actions">
             {user.role === "owner" && <button onClick={() => setModal("quick")}>⌘ Quick create</button>}
+            <a className="admin-mobile-signout" href="/auth/signout">Sign out</a>
             <span>
               {user.displayName
                 .split(/\s|@/)
@@ -2226,6 +2247,15 @@ export function AdminPortal({
         <div className="admin-toast">
           <b>✓</b>
           {toast}
+        </div>
+      )}
+      {actionStatus && (
+        <div className={`admin-action-shield ${actionStatus.phase}`} role="status" aria-live="assertive">
+          <div>
+            <b>{actionStatus.phase === "working" ? "Please wait" : actionStatus.phase === "success" ? "Done" : "Needs attention"}</b>
+            <span>{actionStatus.message}</span>
+            {actionStatus.phase === "working" && <i aria-hidden="true" />}
+          </div>
         </div>
       )}
     </main>

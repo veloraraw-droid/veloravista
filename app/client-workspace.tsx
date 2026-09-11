@@ -10,8 +10,8 @@ type RecordItem = {
   status: string;
   updated_at: string;
 };
-export function ClientWorkspace({ initialTab, initialInvoiceId, paymentResult, sessionId }: { initialTab?: string; initialInvoiceId?: string; paymentResult?: string; sessionId?: string }) {
-  const [tab, setTab] = useState(initialTab === "billing" ? "billing" : "overview"),
+export function ClientWorkspace({ initialTab, initialInvoiceId, initialContractId, paymentResult, sessionId }: { initialTab?: string; initialInvoiceId?: string; initialContractId?: string; paymentResult?: string; sessionId?: string }) {
+  const [tab, setTab] = useState(initialTab === "billing" || initialTab === "contracts" ? initialTab : "overview"),
     [payload, setPayload] = useState<any>(null),
     [busy, setBusy] = useState(true),
     [selectedInvoice, setSelectedInvoice] = useState<RecordItem|null>(null),
@@ -67,6 +67,11 @@ export function ClientWorkspace({ initialTab, initialInvoiceId, paymentResult, s
     const invoice = payload.records.find((item: RecordItem) => item.kind === "invoice" && item.id === initialInvoiceId);
     if (invoice) { setTab("billing"); setSelectedInvoice(invoice); }
   }, [initialInvoiceId, payload]);
+  useEffect(() => {
+    if (!initialContractId || !payload?.records) return;
+    const contract = payload.records.find((item: RecordItem) => item.kind === "contract" && item.id === initialContractId);
+    if (contract) { setTab("contracts"); setSelectedContract(contract); }
+  }, [initialContractId, payload]);
   useEffect(() => {
     if (paymentResult !== "success" || !initialInvoiceId || !sessionId) return;
     void fetch(`/api/invoices/${initialInvoiceId}/status?session_id=${encodeURIComponent(sessionId)}`)
