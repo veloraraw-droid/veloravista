@@ -147,6 +147,8 @@ export function AdminPortal({
   user: { id: string; email: string; displayName: string; role: string; companyId: string|null; permissions: Record<string, boolean> };
 }) {
   const visibleNav = NAV.filter(([id]) => canAccessModule(user.role, user.permissions, id as AdminModule));
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const selectMobileTab = (id: string) => { setTab(id); setMobileNavOpen(false); window.scrollTo({ top: 0, behavior: "smooth" }); };
   const [tab, setTab] = useState("overview"),
     [modal, setModal] = useState(""),
     [toast, setToast] = useState(""),
@@ -356,17 +358,20 @@ export function AdminPortal({
       <aside className="admin-side">
         <Logo dark />
         <div className="admin-badge">LIVE OPS</div>
-        <nav>
+        <button type="button" className="admin-mobile-menu-button" aria-expanded={mobileNavOpen} aria-controls="team-portal-nav" onClick={() => setMobileNavOpen(!mobileNavOpen)}>{mobileNavOpen ? "Close" : "Sections"} <span aria-hidden="true">{mobileNavOpen ? "×" : "☰"}</span></button>
+        <nav id="team-portal-nav" className={mobileNavOpen ? "mobile-open" : ""} aria-label="Team workspace sections">
           {visibleNav.map(([id, label]) => (
             <button
               key={id}
               className={tab === id ? "active" : ""}
-              onClick={() => setTab(id)}
+              onClick={() => selectMobileTab(id)}
+              aria-current={tab === id ? "page" : undefined}
             >
               <span>{label}</span>
               <i>↗</i>
             </button>
           ))}
+          <div className="admin-mobile-menu-footer"><span>{user.displayName}</span><a href="/auth/signout">Sign out</a></div>
         </nav>
         <div className="admin-user">
           <b>{user.displayName}</b>
@@ -374,6 +379,7 @@ export function AdminPortal({
           <a href="/auth/signout">Sign out</a>
         </div>
       </aside>
+      <nav className="admin-mobile-shortcuts" aria-label="Quick team navigation">{[["overview","Home"],["tasks","Tasks"],["calendar","Schedule"],["billing","Billing"]].filter(([id])=>visibleNav.some(([navId])=>navId===id)).map(([id,label])=><button type="button" key={id} className={tab===id?"active":""} aria-current={tab===id?"page":undefined} onClick={()=>selectMobileTab(id)}>{label}</button>)}<button type="button" className={mobileNavOpen?"active":""} aria-expanded={mobileNavOpen} onClick={()=>{setMobileNavOpen(!mobileNavOpen);window.scrollTo({top:0,behavior:"smooth"})}}>More</button></nav>
       <section className="admin-main">
         <header className="admin-top">
           <div>

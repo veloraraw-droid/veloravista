@@ -1847,3 +1847,25 @@ html[data-theme="dark"] .admin-shell :is(h1,h2,h3,h4,b,strong,label,button,a,td,
 :is(.admin-hero,.admin-badge,.featured-package,.admin-form>button,.terms-accept,.admin-signin,.schedule-create button:first-child,.schedule-join,.month-day.today>span,.admin-page>.admin-toolbar>button,.admin-page>.admin-toolbar .toolbar-actions button:not(:first-child),.finance-strip article:first-child,.hub-create button:first-child,.hub-tabs>button,.ops-cards article button:first-child,.template-grid article>button,.invoice-client-actions a) *{color:#111!important}
 @media print{.invoice-document{border:0!important;color:#111!important;background:#fff!important}.invoice-document *{color:#111!important}}
 .invoice-row-actions{display:flex;gap:10px;justify-content:flex-end}.invoice-row-actions button{white-space:nowrap}.invoice-row-actions button:last-child{background:var(--lime);color:#111;border:0;padding:10px 12px}
+
+/* Signed-in team navigation: all permitted sections work in portrait. */
+.admin-mobile-menu-button,.admin-mobile-menu-footer,.admin-mobile-shortcuts{display:none}
+@media(max-width:700px){
+  .admin-shell{min-width:0;display:block;padding-bottom:calc(64px + env(safe-area-inset-bottom))}
+  .admin-side{position:sticky;top:0;z-index:100;display:flex;flex-direction:row;align-items:center;height:64px;padding:0 12px;background:#10100e}
+  .admin-side .logo{width:145px;height:64px;padding:0;border:0}.admin-side .logo img{height:60px;width:125px}
+  .admin-side .admin-badge{display:none}
+  .admin-mobile-menu-button{display:flex;align-items:center;gap:12px;margin-left:auto;border:1px solid #ffffff55;border-radius:3px;background:#252622;color:#fff;padding:10px 13px;min-height:44px;font-size:14px;font-weight:700}
+  .admin-mobile-menu-button span{font-size:18px;line-height:1}
+  .admin-side nav{display:none;position:absolute;top:64px;left:0;right:0;max-height:calc(100dvh - 145px);overflow-y:auto;overscroll-behavior:contain;background:#10100e;padding:12px 14px 60px;border-top:1px solid #ffffff3b;box-shadow:0 18px 30px #0007}
+  .admin-side nav.mobile-open{display:grid;grid-template-columns:1fr 1fr;gap:8px;align-content:start}
+  .admin-side nav button{min-width:0;min-height:62px;white-space:normal;padding:10px 12px;border:1px solid #ffffff38;border-radius:4px;font-size:14px;line-height:1.25;color:#fff}
+  .admin-side nav button.active{border:1px solid var(--lime);background:var(--lime);color:#111}.admin-side nav i{display:none}
+  .admin-mobile-menu-footer{display:none;position:absolute;left:0;right:0;bottom:auto;top:min(calc(100dvh - 104px), 820px);background:#10100e;padding:10px 18px 16px;gap:18px;color:#fff;font-size:14px}
+  .admin-side:has(nav.mobile-open) .admin-mobile-menu-footer{display:flex}.admin-mobile-menu-footer a{text-decoration:underline}
+  .admin-mobile-shortcuts{position:fixed;z-index:99;bottom:0;left:0;right:0;display:flex;align-items:stretch;justify-content:space-around;min-height:calc(62px + env(safe-area-inset-bottom));padding:0 4px env(safe-area-inset-bottom);background:#10100e;color:#fff;border-top:1px solid #ffffff3b}
+  .admin-mobile-shortcuts button{flex:1;min-width:0;border:0;border-top:3px solid transparent;background:none;color:#fff;font-size:12px;font-weight:700;padding:8px 2px;cursor:pointer}
+  .admin-mobile-shortcuts button.active{color:var(--lime);border-top-color:var(--lime)}
+  .admin-main{min-width:0;padding:16px 12px 28px}
+}
+@media(max-width:700px){.admin-side nav{padding-bottom:12px}.admin-mobile-menu-footer,.admin-side:has(nav.mobile-open) .admin-mobile-menu-footer{position:static;grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;border-top:1px solid #ffffff35;margin-top:4px;padding:14px 2px 4px}}

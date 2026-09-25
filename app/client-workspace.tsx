@@ -19,6 +19,14 @@ export function ClientWorkspace({ initialTab, initialInvoiceId, initialContractI
     [contractNotice, setContractNotice] = useState(""),
     [paymentNotice, setPaymentNotice] = useState(paymentResult === "cancelled" ? "Payment was not completed or was declined. Please try again." : paymentResult === "failed" ? "Stripe checkout could not be opened. Please try again or contact the studio." : ""),
     [paymentLinks, setPaymentLinks] = useState<{invoiceUrl?:string;invoicePdf?:string;receiptUrl?:string}>({});
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const clientNav = [
+    ["overview", "Overview"], ["projects", "Projects & Drive"], ["billing", "Billing & invoices"],
+    ["contracts", "Contracts"], ["schedule", "Schedule"], ["requests", "Requests & approvals"],
+    ["notifications", `Notifications${payload?.notifications?.filter((x: any) => !x.read_at).length ? ` (${payload.notifications.filter((x: any) => !x.read_at).length})` : ""}`],
+    ["account", "Account & privacy"],
+  ];
+  const selectMobileTab = (id: string) => { setTab(id); setMobileNavOpen(false); window.scrollTo({ top: 0, behavior: "smooth" }); };
   const load = useCallback(async () => {
     const r = await fetch("/api/client");
     if (r.ok) setPayload(await r.json());
@@ -185,29 +193,20 @@ export function ClientWorkspace({ initialTab, initialInvoiceId, initialContractI
     <main className="portal">
       <aside className="portal-side">
         <Logo dark />
-        <nav>
-          {[
-            ["overview", "Overview"],
-            ["projects", "My work & Drive"],
-            ["billing", "Billing & invoices"],
-            ["contracts", "Contracts"],
-            ["schedule", "Schedule"],
-            ["requests", "Requests & approvals"],
-            [
-              "notifications",
-              `Notifications${payload.notifications?.filter((x: any) => !x.read_at).length ? ` (${payload.notifications.filter((x: any) => !x.read_at).length})` : ""}`,
-            ],
-            ["account", "Account & privacy"],
-          ].map(([id, label]) => (
+        <button className="portal-mobile-menu-button" type="button" aria-expanded={mobileNavOpen} aria-controls="client-portal-nav" onClick={() => setMobileNavOpen(!mobileNavOpen)}>{mobileNavOpen ? "Close" : "Menu"} <span aria-hidden="true">{mobileNavOpen ? "×" : "☰"}</span></button>
+        <nav id="client-portal-nav" className={mobileNavOpen ? "mobile-open" : ""} aria-label="Client portal sections">
+          {clientNav.map(([id, label]) => (
             <button
               className={tab === id ? "active" : ""}
-              onClick={() => setTab(id)}
+              onClick={() => selectMobileTab(id)}
               key={id}
+              aria-current={tab === id ? "page" : undefined}
             >
               {label}
               <span>↗</span>
             </button>
           ))}
+          <div className="portal-mobile-menu-footer"><a href="mailto:info@veloravistavisuals.com">Contact support</a><a href="/auth/signout">Sign out</a></div>
         </nav>
         <div className="portal-help">
           <p>Need help?</p>
@@ -218,6 +217,7 @@ export function ClientWorkspace({ initialTab, initialInvoiceId, initialContractI
           Sign out
         </a>
       </aside>
+      <nav className="portal-mobile-shortcuts" aria-label="Quick client navigation">{[["overview","Home"],["projects","Drive"],["billing","Billing"],["contracts","Contracts"]].map(([id,label])=><button type="button" key={id} className={tab===id?"active":""} aria-current={tab===id?"page":undefined} onClick={()=>selectMobileTab(id)}>{label}</button>)}<button type="button" className={mobileNavOpen?"active":""} aria-expanded={mobileNavOpen} onClick={()=>{setMobileNavOpen(!mobileNavOpen);window.scrollTo({top:0,behavior:"smooth"})}}>More</button></nav>
       <section className="portal-main">
         <header>
           <div>
