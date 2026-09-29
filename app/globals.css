@@ -159,3 +159,12 @@ html[data-theme="dark"] .portfolio-page{background:#0c0d0b;color:#f4f0e7}html[da
   .portal-mobile-shortcuts button.active{color:var(--lime);border-top-color:var(--lime)}
 }
 @media(max-width:700px){.portal-side nav{padding-bottom:12px}.portal-mobile-menu-footer,.portal-side:has(nav.mobile-open) .portal-mobile-menu-footer{position:static;grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;box-shadow:none;border-top:1px solid #ffffff35;margin-top:4px;padding:14px 2px 4px}}
+
+/* Keep the first paint quick and defer offscreen media downloads. */
+.collage-tile,.vv-gallery-image,.vv-book{position:relative}
+.brand-intro{animation:introExit .2s ease .5s forwards;pointer-events:none}
+.intro-mark{animation-duration:.35s}
+.intro-mark span{animation-duration:.2s;animation-delay:.15s}
+.intro-panel-a{animation-duration:.15s;animation-delay:.35s}
+.intro-panel-b{animation-duration:.15s;animation-delay:.45s}
+@media(prefers-reduced-motion:reduce){.brand-intro{display:none}.page-reveal{animation:none}}
