@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import "./admin.css";
@@ -40,6 +41,18 @@ export default function RootLayout({
         <BrandIntro />
         {children}
         <ThemeToggle />
+        <Script
+          src="https://www.googletagmanager.com/gtag/js?id=G-9N3GEHQJLY"
+          strategy="afterInteractive"
+        />
+        <Script id="google-analytics" strategy="afterInteractive">
+          {`
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            gtag('js', new Date());
+            gtag('config', 'G-9N3GEHQJLY');
+          `}
+        </Script>
       </body>
     </html>
   );
