@@ -2,6 +2,29 @@
 
 import { type CSSProperties, FormEvent, useEffect, useRef, useState } from "react";
 import { AuthForm } from "./auth-form";
+import Image from "next/image";
+
+// Download and play only the selected video while it is in view.
+function DeferredVideo({src, poster, label, active = true, eager = false}: {
+  src: string; poster?: string; label?: string; active?: boolean; eager?: boolean;
+}) {
+  const frame = useRef<HTMLDivElement>(null);
+  const [inView, setInView] = useState(eager);
+  const [playing, setPlaying] = useState(false);
+  useEffect(() => {
+    const element = frame.current;
+    if (!element) return;
+    const observer = new IntersectionObserver(([entry]) => setInView(entry.isIntersecting));
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  const shouldPlay = active && inView;
+  return <div ref={frame} style={{position: "relative", width: "100%", height: "100%"}}>
+    {poster && <Image src={poster} alt="" fill sizes="(max-width: 700px) 72vw, 360px" style={{objectFit: "cover"}} />}
+    <video src={shouldPlay ? src : undefined} preload="none" autoPlay={shouldPlay} muted loop playsInline aria-label={label}
+      onPlaying={() => setPlaying(true)} onEmptied={() => setPlaying(false)} onLoadStart={() => setPlaying(false)} style={{position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: playing && shouldPlay ? 1 : 0}} />
+  </div>;
+}
 
 export function SiteMusic(){
   const [on,setOn]=useState(false),[ready,setReady]=useState(false);
@@ -28,8 +51,15 @@ export function ShowreelHero(){
   ];
   const scenes=Array.from({length:5},(_,i)=>media.slice(i*5,i*5+5));
   const [active,setActive]=useState(0);
-  useEffect(()=>{const timer=window.setInterval(()=>setActive(v=>(v+1)%scenes.length),4600);return()=>window.clearInterval(timer)},[scenes.length]);
-  return <section className="home-hero collage-hero"><div className="hero-collage" aria-live="off">{scenes.map((scene,sceneIndex)=><div className={`collage-scene ${sceneIndex===active?"active":""}`} aria-hidden={sceneIndex!==active} key={sceneIndex}>{scene.map(([type,src,alt],i)=><div className={`collage-tile tile-${i+1}`} key={src}>{type==="video"?<video autoPlay muted loop playsInline aria-label={alt}><source src={src} type="video/mp4"/></video>:<img src={src} alt={alt}/>}</div>)}</div>)}</div><div className="noise"/><div className="hero-kicker"><span>Film · Content · Photography</span><span>Vancouver / Available everywhere</span></div><h1>MAKE THEM<br/><i>FEEL</i> SOMETHING.</h1><a className="hero-cta" href="/start-project"><span>Start a project</span><b>↗</b></a><div className="hero-pagination" aria-label="Choose portfolio collage">{scenes.map((_,i)=><button className={i===active?"active":""} onClick={()=>setActive(i)} aria-label={`Show portfolio collage ${i+1}`} aria-pressed={i===active} key={i}><span/></button>)}</div></section>
+  const heroRef=useRef<HTMLElement>(null);
+  const [heroVisible,setHeroVisible]=useState(true);
+  useEffect(()=>{
+    const hero=heroRef.current;if(!hero)return;
+    const observer=new IntersectionObserver(([entry])=>setHeroVisible(entry.isIntersecting));
+    observer.observe(hero);return()=>observer.disconnect();
+  },[]);
+  useEffect(()=>{if(!heroVisible)return;const timer=window.setInterval(()=>{if(!document.hidden)setActive(v=>(v+1)%scenes.length)},4600);return()=>window.clearInterval(timer)},[scenes.length,heroVisible]);
+  return <section ref={heroRef} className="home-hero collage-hero"><div className="hero-collage" aria-live="off">{scenes.map((scene,sceneIndex)=><div className={`collage-scene ${sceneIndex===active?"active":""}`} aria-hidden={sceneIndex!==active} key={sceneIndex}>{sceneIndex===active&&scene.map(([type,src,alt],i)=><div className={`collage-tile tile-${i+1}`} key={src}>{type==="video"?<DeferredVideo src={src} label={alt} eager/>:<Image src={src} alt={alt} fill sizes={i===0?"(max-width: 700px) 60vw, (max-width: 850px) 40vw, 22vw":"(max-width: 700px) 36vw, (max-width: 850px) 30vw, 16vw"} loading={sceneIndex===0?"eager":"lazy"} fetchPriority={sceneIndex===0&&i===0?"high":"auto"}/>}</div>)}</div>)}</div><div className="noise"/><div className="hero-kicker"><span>Film · Content · Photography</span><span>Vancouver / Available everywhere</span></div><h1>MAKE THEM<br/><i>FEEL</i> SOMETHING.</h1><a className="hero-cta" href="/start-project"><span>Start a project</span><b>↗</b></a><div className="hero-pagination" aria-label="Choose portfolio collage">{scenes.map((_,i)=><button className={i===active?"active":""} onClick={()=>setActive(i)} aria-label={`Show portfolio collage ${i+1}`} aria-pressed={i===active} key={i}><span/></button>)}</div></section>
 }
 
 const showcaseFilms=[
@@ -44,7 +74,7 @@ export function VideoCoverFlow(){
   const [active,setActive]=useState(0),total=showcaseFilms.length;
   const move=(step:number)=>setActive(v=>(v+step+total)%total);
   const position=(index:number)=>{let d=index-active;if(d>total/2)d-=total;if(d<-total/2)d+=total;return d};
-  return <section className="coverflow-section"><div className="vv-section-head light"><div><span>01 / Motion portfolio</span><h2>Stories in motion.</h2></div><p>Real estate and culinary films—move through the collection like an album library.</p></div><div className="coverflow-stage">{showcaseFilms.map((film,i)=>{const pos=position(i);return <button type="button" className={`coverflow-card ${pos===0?"active":""}`} style={{"--cover-pos":pos,"--cover-depth":10-Math.abs(pos)} as CSSProperties} onClick={()=>setActive(i)} aria-label={`View ${film.title}`} aria-pressed={pos===0} key={film.src}><video autoPlay={pos===0} muted loop playsInline poster={film.poster}><source src={film.src} type="video/mp4"/></video><span>{film.category}</span><b>{film.title}</b></button>})}</div><div className="coverflow-controls"><button onClick={()=>move(-1)} aria-label="Previous film">←</button><div><b>{String(active+1).padStart(2,"0")}</b><span>/ {String(total).padStart(2,"0")}</span></div><button onClick={()=>move(1)} aria-label="Next film">→</button></div><div className="coverflow-now"><span>Now showing</span><h3>{showcaseFilms[active].title}</h3><p>{showcaseFilms[active].category}</p></div></section>
+  return <section className="coverflow-section"><div className="vv-section-head light"><div><span>01 / Motion portfolio</span><h2>Stories in motion.</h2></div><p>Real estate and culinary films—move through the collection like an album library.</p></div><div className="coverflow-stage">{showcaseFilms.map((film,i)=>{const pos=position(i);return <button type="button" className={`coverflow-card ${pos===0?"active":""}`} style={{"--cover-pos":pos,"--cover-depth":10-Math.abs(pos)} as CSSProperties} onClick={()=>setActive(i)} aria-label={`View ${film.title}`} aria-pressed={pos===0} key={film.src}><DeferredVideo src={film.src} poster={film.poster} label={film.title} active={pos===0}/><span>{film.category}</span><b>{film.title}</b></button>})}</div><div className="coverflow-controls"><button onClick={()=>move(-1)} aria-label="Previous film">←</button><div><b>{String(active+1).padStart(2,"0")}</b><span>/ {String(total).padStart(2,"0")}</span></div><button onClick={()=>move(1)} aria-label="Next film">→</button></div><div className="coverflow-now"><span>Now showing</span><h3>{showcaseFilms[active].title}</h3><p>{showcaseFilms[active].category}</p></div></section>
 }
 
 export function BrandIntro(){
@@ -53,14 +83,14 @@ export function BrandIntro(){
     const seen=sessionStorage.getItem("velora-intro-seen");
     if(seen){setVisible(false);return}
     document.body.classList.add("intro-active");
-    const timer=window.setTimeout(()=>{setVisible(false);document.body.classList.remove("intro-active");sessionStorage.setItem("velora-intro-seen","1")},2800);
+    const timer=window.setTimeout(()=>{setVisible(false);document.body.classList.remove("intro-active");sessionStorage.setItem("velora-intro-seen","1")},700);
     return()=>{window.clearTimeout(timer);document.body.classList.remove("intro-active")};
   },[]);
   if(!visible)return null;
-  return <div className="brand-intro" aria-hidden="true"><div className="intro-panel intro-panel-a"/><div className="intro-panel intro-panel-b"/><div className="intro-mark"><img src="/asset/velora-logo-transparent.png" alt=""/><span>FILM&nbsp;&nbsp;•&nbsp;&nbsp;CONTENT&nbsp;&nbsp;•&nbsp;&nbsp;PHOTOGRAPHY</span></div><div className="intro-counter"><span>LOADING THE GOOD STUFF</span><b>00&nbsp;&nbsp;—&nbsp;&nbsp;100</b></div></div>
+  return <div className="brand-intro" aria-hidden="true"><div className="intro-panel intro-panel-a"/><div className="intro-panel intro-panel-b"/><div className="intro-mark"><Image src="/asset/velora-logo-transparent.png" alt="" width={620} height={310} sizes="(max-width: 700px) 88vw, 620px" loading="eager"/><span>FILM&nbsp;&nbsp;•&nbsp;&nbsp;CONTENT&nbsp;&nbsp;•&nbsp;&nbsp;PHOTOGRAPHY</span></div><div className="intro-counter"><span>LOADING THE GOOD STUFF</span><b>00&nbsp;&nbsp;—&nbsp;&nbsp;100</b></div></div>
 }
 
-export function Logo({dark=false}:{dark?:boolean}) { return <a className={`logo ${dark?"logo-dark":""}`} href="/" aria-label="Velora Vista Visuals home"><img src="/asset/velora-logo-transparent.png" alt="Velora Vista Visuals" /></a> }
+export function Logo({dark=false}:{dark?:boolean}) { return <a className={`logo ${dark?"logo-dark":""}`} href="/" aria-label="Velora Vista Visuals home"><Image src="/asset/velora-logo-transparent.png" alt="Velora Vista Visuals" width={230} height={180} sizes="(max-width: 700px) 155px, 230px" /></a> }
 
 export function Header({dark=false}:{dark?:boolean}) {
   const [open,setOpen]=useState(false);
