@@ -68,11 +68,11 @@ export function Header({dark=false}:{dark?:boolean}) {
     <header className={`site-header ${dark?"header-dark":""}`}>
       <Logo dark={dark}/>
       <p className="header-note">A visual production studio<br/>Vancouver, Canada</p>
-      <nav className="desktop-nav"><a href="/work">Work</a><a href="/services">Services</a><a href="/about">Studio</a></nav>
+      <nav className="desktop-nav"><a href="/work">Work</a><a href="/services">Services</a><a href="/about">Studio</a><a href="/blog">Blog</a></nav>
       <div className="header-actions"><a className="login-link" href="/login">Client login</a><a className="start-link" href="/start-project">Start a project <b>↗</b></a></div>
       <button className="menu-btn" onClick={()=>setOpen(!open)} aria-expanded={open} aria-label="Toggle menu">{open?"Close":"Menu"}</button>
     </header>
-    <div className={`mobile-menu ${open?"open":""}`}><Logo/><nav><a href="/work">Work <span>01</span></a><a href="/services">Services <span>02</span></a><a href="/about">Studio <span>03</span></a><a href="/start-project">Start a project <span>04</span></a><a href="/login">Client login <span>05</span></a></nav></div>
+    <div className={`mobile-menu ${open?"open":""}`}><Logo/><nav><a href="/work">Work <span>01</span></a><a href="/services">Services <span>02</span></a><a href="/about">Studio <span>03</span></a><a href="/blog">Blog <span>04</span></a><a href="/start-project">Start a project <span>05</span></a><a href="/login">Client login <span>06</span></a></nav></div>
   </>;
 }
 
