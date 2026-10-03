@@ -21,6 +21,7 @@ export function InteracPayment({ id, invoice, onUpdated }: { id: string; invoice
     finally { lock.current = false; setBusy(false); }
   }
   return <section className="interac-payment">
+    <p><b>Preferred payment method</b></p>
     {!open ? <button type="button" onClick={() => setOpen(true)}>Pay by Interac e-Transfer</button> : <>
       <h3>Interac e-Transfer</h3>
       <p>Send the exact invoice total from your banking app. Include your invoice number in the transfer message.</p>
