@@ -12,6 +12,8 @@ import {
 import { Logo } from "./components";
 import { createBrowserSupabase } from "../lib/supabase/client";
 import { InvoiceDocument, printInvoice } from "./invoice-document";
+import { InvoiceEditor, invoiceFields } from "./invoice-editor";
+import { FinanceWorkspace } from "./finance-workspace";
 import { AdminModule, canAccessModule } from "../lib/permissions";
 type Rec = {
   id: string;
@@ -28,6 +30,7 @@ const NAV = [
   ["customers", "Customers"],
   ["contracts", "Contracts"],
   ["billing", "Billing"],
+  ["finance", "Income & expenses"],
   ["projects", "Projects & Drive"],
   ["portfolio", "Portfolio"],
   ["plans", "Plans & subscriptions"],
@@ -250,7 +253,7 @@ export function AdminPortal({
   async function remove(id: string) {
     if (!confirm("Remove this record?")) return;
     const response = await fetch(`/api/ops?id=${id}`, { method: "DELETE" });
-    if (!response.ok) { notify("Could not delete this record."); return; }
+    if (!response.ok) { const result = await response.json().catch(() => ({})); notify(result.error || "Could not delete this record."); return; }
     await load();
     setModal("");
     setSelected(null);
@@ -259,7 +262,7 @@ export function AdminPortal({
   async function update(record: Rec, changes: Record<string, any>, status?: string) {
     if (!beginAction("Updating this item…")) return;
     const r = await fetch("/api/ops", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: record.id, data: { ...record.data, ...changes }, status }) });
-    if (!r.ok) { finishAction("Could not update this record.", false); return; }
+    if (!r.ok) { const result = await r.json().catch(() => ({})); finishAction(result.error || "Could not update this record.", false); return; }
     await load(); setModal(""); finishAction("Updated everywhere in real time.");
   }
   async function confirmInterac(record: Rec) {
@@ -291,8 +294,7 @@ export function AdminPortal({
     (e: FormEvent<HTMLFormElement>) => {
       e.preventDefault();
       if (actionLock.current) return;
-      setModal("");
-      void create(kind, map(new FormData(e.currentTarget)));
+      try { const data = map(new FormData(e.currentTarget)); setModal(""); void create(kind, data); } catch(error) { notify(error instanceof Error ? error.message : "Check the form values."); }
     };
   const invoiceNo = `VLV-${new Date().getFullYear()}-${String(invoices.length + 1).padStart(4, "0")}`;
   const conflicts = useMemo(
@@ -460,7 +462,7 @@ export function AdminPortal({
                 <b>
                   {money(
                     invoices
-                      .filter((x) => x.data.status !== "paid")
+                      .filter((x) => !["paid", "void"].includes(x.data.status))
                       .reduce((s, x) => s + Number(x.data.total || 0), 0),
                   )}
                 </b>
@@ -1086,6 +1088,7 @@ export function AdminPortal({
             )}
           </section>
         )}
+        {tab === "finance" && <FinanceWorkspace onInvoice={(id) => { const invoice = invoices.find(x => x.id === id); if (invoice) { setSelected(invoice); setModal("invoiceview"); } }} />}
         {tab === "billing" && (
           <section className="admin-page">
             <div className="admin-toolbar">
@@ -1111,7 +1114,7 @@ export function AdminPortal({
                 <b>
                   {money(
                     invoices
-                      .filter((x) => x.data.status !== "paid")
+                      .filter((x) => !["paid", "void"].includes(x.data.status))
                       .reduce((s, x) => s + Number(x.data.total || 0), 0),
                   )}
                 </b>
@@ -1759,16 +1762,11 @@ export function AdminPortal({
           <form
             className="admin-form"
             onSubmit={submit("invoice", (f) => {
-              const subtotal = Number(f.get("subtotal")),
-                tax = Number(f.get("tax"));
               return {
                 number: invoiceNo,
                 client: f.get("client"),
                 email: f.get("email"),
-                description: f.get("description"),
-                subtotal,
-                tax,
-                total: subtotal + (subtotal * tax) / 100,
+                ...invoiceFields(f),
                 due: f.get("due"),
                 status: "draft",
                 paymentLink: f.get("paymentLink"),
@@ -1785,18 +1783,7 @@ export function AdminPortal({
               </select>
             </Field>
             <Field label="Billing email" name="email" type="email" required />
-            <Field label="Work performed / line items" name="description">
-              <textarea name="description" rows={5} required />
-            </Field>
-            <div>
-              <Field
-                label="Subtotal CAD"
-                name="subtotal"
-                type="number"
-                required
-              />
-              <Field label="Tax %" name="tax" type="number" />
-            </div>
+            <InvoiceEditor />
             <Field label="Due date" name="due" type="date" required />
             <Field
               label="Payment link"
@@ -2062,7 +2049,8 @@ export function AdminPortal({
           <div className="account-actions">
             {selected.data.status === "etransfer_pending" && <button onClick={() => void confirmInterac(selected)}>Confirm e-Transfer received</button>}
             <button onClick={() => printInvoice(selected.data)}>Print / save PDF</button>
-            <button onClick={() => setModal("invoiceedit")}>Edit invoice</button>
+            {selected.data.status !== "paid" && <button onClick={() => setModal("invoiceedit")}>Edit invoice</button>}
+            {!["paid", "void"].includes(selected.data.status) && <button onClick={() => setModal("invoiceclear")}>Mark invoice paid</button>}
             <a
               href={`mailto:${selected.data.email}?subject=${encodeURIComponent(`Invoice ${selected.data.number} from Velora Vista Visuals Ltd.`)}&body=${encodeURIComponent(`Your invoice ${selected.data.number} for ${money(selected.data.total)} is ready. Payment link: ${selected.data.paymentLink || "Please contact us for payment."}`)}`}
             >
@@ -2073,17 +2061,38 @@ export function AdminPortal({
                 Open payment link ↗
               </a>
             )}
-            <button className="danger-action" onClick={() => void remove(selected.id)}>Delete invoice</button>
+            {selected.data.status !== "paid" && <button className="danger-action" onClick={() => void remove(selected.id)}>Delete invoice</button>}
           </div>
+        </Modal>
+      )}
+      {modal === "invoiceclear" && selected && (
+        <Modal title={`Clear invoice ${selected.data.number}`} onClose={() => setModal("invoiceview")}>
+          <p>Record the full {money(selected.data.total)} payment after you have received it. The invoice and finance dashboard will update together.</p>
+          <form className="admin-form" onSubmit={async (e) => {
+            e.preventDefault(); const form = new FormData(e.currentTarget);
+            if (!beginAction("Recording payment and clearing the invoice…")) return;
+            setModal("");
+            try {
+              const response = await fetch(`/api/invoices/${selected.id}/clear`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ method: form.get("method"), paidDate: form.get("paidDate"), reference: form.get("reference"), notes: form.get("notes") }) });
+              const result = await response.json();
+              if (!response.ok) { finishAction(result.error || "Could not clear invoice.", false); return; }
+              await load(); finishAction(result.warning || "Invoice cleared. Payment added to income.", !result.warning);
+            } catch { finishAction("Could not record payment. Please try again.", false); }
+          }}>
+            <Field label="Payment method" name="method"><select name="method" required><option value="cash">Cash</option><option value="interac_etransfer">Company e-Transfer</option><option value="personal_etransfer">Personal e-Transfer</option><option value="bank_transfer">Bank transfer</option><option value="cheque">Cheque</option><option value="other">Other</option></select></Field>
+            <Field label="Date received" name="paidDate"><input name="paidDate" type="date" required defaultValue={dateKey(new Date())}/></Field>
+            <Field label="Payment reference (optional)" name="reference" />
+            <Field label="Internal notes" name="notes"><textarea name="notes" rows={3}/></Field>
+            <button>Confirm payment received</button>
+          </form>
         </Modal>
       )}
       {modal === "invoiceedit" && selected && (
         <Modal title={`Edit ${selected.data.number}`} onClose={() => setModal("invoiceview")}>
-          <form className="admin-form" onSubmit={(e)=>{e.preventDefault();const f=new FormData(e.currentTarget),subtotal=Number(f.get("subtotal")),tax=Number(f.get("tax"));void update(selected,{client:f.get("client"),email:f.get("email"),description:f.get("description"),subtotal,tax,total:subtotal+(subtotal*tax)/100,due:f.get("due"),status:f.get("status"),paymentLink:f.get("paymentLink"),notes:f.get("notes")})}}>
+          <form className="admin-form" onSubmit={(e)=>{e.preventDefault();const f=new FormData(e.currentTarget);try { void update(selected,{client:f.get("client"),email:f.get("email"),...invoiceFields(f),due:f.get("due"),status:f.get("status"),paymentLink:f.get("paymentLink"),notes:f.get("notes")}); } catch(error) { notify(error instanceof Error ? error.message : "Check invoice items."); }}}>
             <div><Field label="Customer" name="client" required><input name="client" required defaultValue={selected.data.client}/></Field><Field label="Billing email" name="email" type="email" required><input name="email" type="email" required defaultValue={selected.data.email}/></Field></div>
-            <Field label="Work performed / line items" name="description"><textarea name="description" rows={5} required defaultValue={selected.data.description}/></Field>
-            <div><Field label="Subtotal CAD" name="subtotal" type="number" required><input name="subtotal" type="number" step="0.01" required defaultValue={selected.data.subtotal}/></Field><Field label="Tax %" name="tax" type="number"><input name="tax" type="number" step="0.01" defaultValue={selected.data.tax || 0}/></Field></div>
-            <div><Field label="Due date" name="due" type="date"><input name="due" type="date" defaultValue={selected.data.due}/></Field><Field label="Status" name="status"><select name="status" defaultValue={selected.data.status || "draft"}><option value="draft">Draft</option><option value="sent">Sent</option><option value="etransfer_pending">e-Transfer pending confirmation</option><option value="paid">Paid</option><option value="overdue">Overdue</option><option value="void">Void</option></select></Field></div>
+            <InvoiceEditor initial={selected.data} />
+            <div><Field label="Due date" name="due" type="date"><input name="due" type="date" defaultValue={selected.data.due}/></Field><Field label="Status" name="status"><select name="status" defaultValue={selected.data.status || "draft"}><option value="draft">Draft</option><option value="sent">Sent</option><option value="etransfer_pending">e-Transfer pending confirmation</option><option value="overdue">Overdue</option><option value="void">Void</option></select></Field></div>
             <Field label="Payment link" name="paymentLink" type="url"><input name="paymentLink" type="url" defaultValue={selected.data.paymentLink || ""}/></Field>
             <Field label="Notes" name="notes"><textarea name="notes" rows={3} defaultValue={selected.data.notes || ""}/></Field>
             <button>Save invoice changes ↗</button>

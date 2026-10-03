@@ -27,7 +27,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const receiptUrl = charge?.receipt_url || null;
 
   if (paid) {
-    const paidData = { ...invoice.data, status: "paid", paidAt: invoice.data?.paidAt || new Date().toISOString(), stripeCheckoutSessionId: session.id, stripePaymentIntentId: paymentIntent?.id || String(session.payment_intent || ""), stripeInvoiceId: stripeInvoice?.id || "", stripeInvoiceUrl: invoiceUrl, stripeInvoicePdf: invoicePdf, receiptUrl };
+    const paidData = { ...invoice.data, status: "paid", paymentMethod:"stripe", stripeLivemode:session.livemode, paidAt: invoice.data?.paidAt || new Date().toISOString(), stripeCheckoutSessionId: session.id, stripePaymentIntentId: paymentIntent?.id || String(session.payment_intent || ""), stripeInvoiceId: stripeInvoice?.id || "", stripeInvoiceUrl: invoiceUrl, stripeInvoicePdf: invoicePdf, receiptUrl };
     if (!invoice.data?.receiptEmailSentAt && process.env.RESEND_API_KEY) {
       const resend = new Resend(process.env.RESEND_API_KEY);
       const destination = invoiceUrl || `${process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin}/client-portal?tab=billing&invoice=${id}`;

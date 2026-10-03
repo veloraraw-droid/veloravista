@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
+import { recordStripeIncome } from "../../../../lib/finance-server";
 import { createAdminSupabase } from "../../../../lib/supabase/server";
 import { sendInternalCustomerUpdate, sendTransactionalEmail } from "../../../../lib/transactional-email";
 
@@ -13,24 +14,34 @@ export async function POST(request: Request) {
   const admin = createAdminSupabase();
   const existing = await admin.from("billing_events").select("id").eq("stripe_event_id",event.id).maybeSingle();
   if (existing.data) return NextResponse.json({received:true,duplicate:true});
-  const object = event.data.object as Stripe.Checkout.Session | Stripe.Subscription;
+  if (event.type === "invoice.paid") {
+    try { await recordStripeIncome(event.data.object as Stripe.Invoice); } catch { return NextResponse.json({error:"Finance recording failed; retry required."},{status:500}); }
+  }
+  const object = event.data.object as Stripe.Checkout.Session | Stripe.Subscription | Stripe.Invoice;
   const operationId = object.metadata?.operation_id;
   if (operationId && (event.type === "checkout.session.completed" || event.type === "checkout.session.async_payment_succeeded")) {
     const session = object as Stripe.Checkout.Session;
+    if (!["paid", "no_payment_required"].includes(session.payment_status)) return NextResponse.json({received:true,pending:true});
+    if (session.invoice) {
+      try { const invoice = await stripe.invoices.retrieve(typeof session.invoice === "string" ? session.invoice : session.invoice.id, {expand:["payments"]}); await recordStripeIncome(invoice); } catch { return NextResponse.json({error:"Finance recording failed; retry required."},{status:500}); }
+    }
     const current = await admin.from("operations").select("kind,data,company_id").eq("id",operationId).single();
     if (current.data) {
       const isSubscription = current.data.kind === "subscription" || session.mode === "subscription";
       await admin.from("operations").update({ data: {
         ...current.data.data,
         status: isSubscription ? "active" : "paid",
-        paidAt: new Date().toISOString(),
+        paidAt: current.data.data.paidAt || new Date(event.created*1000).toISOString(),
+        stripeInvoiceId: typeof session.invoice === "string" ? session.invoice : session.invoice?.id || "",
+        paymentMethod: "stripe",
+        stripeLivemode: session.livemode,
         stripeCustomerId: String(session.customer || ""),
         stripeSubscriptionId: String(session.subscription || ""),
         stripePaymentIntentId: String(session.payment_intent || ""),
       } }).eq("id",operationId);
       if (!current.data.data?.internalPaymentEmailSentAt) {
         const sent = await sendInternalCustomerUpdate({subject:`Payment completed — ${current.data.data?.number || operationId}`,heading:isSubscription?"Customer subscription activated":"Customer payment completed",details:[["Invoice / plan",current.data.data?.number||current.data.data?.plan||operationId],["Customer",current.data.data?.client||current.data.data?.company||session.customer_details?.name||"Customer"],["Email",current.data.data?.email||session.customer_details?.email||session.customer_email||"Not supplied"],["Amount",session.amount_total==null?"See Stripe":`$${(session.amount_total/100).toFixed(2)} ${(session.currency||"cad").toUpperCase()}`],["Stripe session",session.id]],actionUrl:`${process.env.NEXT_PUBLIC_SITE_URL || "https://www.veloravistavisuals.com"}/admin-portal`});
-        if (sent) await admin.from("operations").update({data:{...current.data.data,status:isSubscription?"active":"paid",paidAt:new Date().toISOString(),stripeCustomerId:String(session.customer||""),stripeSubscriptionId:String(session.subscription||""),stripePaymentIntentId:String(session.payment_intent||""),internalPaymentEmailSentAt:new Date().toISOString()}}).eq("id",operationId);
+        if (sent) await admin.from("operations").update({data:{...current.data.data,status:isSubscription?"active":"paid",paidAt:current.data.data.paidAt||new Date(event.created*1000).toISOString(),stripeInvoiceId:typeof session.invoice === "string" ? session.invoice : session.invoice?.id || "",paymentMethod:"stripe",stripeLivemode:session.livemode,stripeCustomerId:String(session.customer||""),stripeSubscriptionId:String(session.subscription||""),stripePaymentIntentId:String(session.payment_intent||""),internalPaymentEmailSentAt:new Date().toISOString()}}).eq("id",operationId);
       }
       const customerEmail = String(current.data.data?.email || session.customer_details?.email || session.customer_email || "").trim();
       if (customerEmail && !current.data.data?.customerPaymentEmailSentAt) {
@@ -44,7 +55,7 @@ export async function POST(request: Request) {
           actionUrl: `${process.env.NEXT_PUBLIC_SITE_URL || "https://www.veloravistavisuals.com"}/client-portal?tab=billing`,
           actionLabel: "Open billing centre",
         });
-        if (sent) await admin.from("operations").update({ data: { ...latestData, status: isSubscription ? "active" : "paid", paidAt: new Date().toISOString(), stripeCustomerId: String(session.customer || ""), stripeSubscriptionId: String(session.subscription || ""), stripePaymentIntentId: String(session.payment_intent || ""), customerPaymentEmailSentAt: new Date().toISOString() } }).eq("id", operationId);
+        if (sent) await admin.from("operations").update({ data: { ...latestData, status: isSubscription ? "active" : "paid", paidAt: current.data.data.paidAt || new Date(event.created*1000).toISOString(), stripeInvoiceId: typeof session.invoice === "string" ? session.invoice : session.invoice?.id || "", paymentMethod:"stripe", stripeLivemode:session.livemode, stripeCustomerId: String(session.customer || ""), stripeSubscriptionId: String(session.subscription || ""), stripePaymentIntentId: String(session.payment_intent || ""), customerPaymentEmailSentAt: new Date().toISOString() } }).eq("id", operationId);
       }
     }
   }

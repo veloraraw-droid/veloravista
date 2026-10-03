@@ -1,4 +1,4 @@
-export type AdminModule = "overview" | "tasks" | "calendar" | "customers" | "contracts" | "billing" | "projects" | "portfolio" | "plans" | "team" | "settings";
+export type AdminModule = "overview" | "tasks" | "calendar" | "customers" | "contracts" | "billing" | "finance" | "projects" | "portfolio" | "plans" | "team" | "settings";
 
 const labels: Record<string, AdminModule> = {
   overview: "overview",
@@ -10,6 +10,7 @@ const labels: Record<string, AdminModule> = {
   customers: "customers",
   contracts: "contracts",
   billing: "billing",
+  finance: "billing",
   projects: "projects",
   portfolio: "portfolio",
   plans: "plans",
@@ -38,6 +39,7 @@ export function moduleForKind(kind: string): AdminModule | null {
   if (["client", "client_request"].includes(kind)) return "customers";
   if (["contract", "contract_template"].includes(kind)) return "contracts";
   if (kind === "invoice") return "billing";
+  if (["financial_income", "financial_expense"].includes(kind)) return "billing";
   if (kind === "project") return "projects";
   if (kind === "portfolio") return "portfolio";
   if (["plan", "subscription"].includes(kind)) return "plans";
@@ -46,5 +48,5 @@ export function moduleForKind(kind: string): AdminModule | null {
 }
 
 export function canAccessModule(role: string, permissions: unknown, module: AdminModule) {
-  return role === "owner" || permissionModules(permissions).has(module);
+  return role === "owner" || permissionModules(permissions).has(module === "finance" ? "billing" : module);
 }

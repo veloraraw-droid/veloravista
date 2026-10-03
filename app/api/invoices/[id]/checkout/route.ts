@@ -27,7 +27,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       customer_email: String(invoice.data?.email || "") || undefined,
       line_items: [{ price_data: { currency: "cad", unit_amount: Math.round(total * 100), product_data: { name: String(invoice.data?.number || "Velora Vista invoice"), description: String(invoice.data?.description || "Creative services").slice(0, 500) } }, quantity: 1 }],
       metadata: { operation_id: invoice.id, company_id: invoice.company_id || "", invoice_number: String(invoice.data?.number || "") },
-      invoice_creation: { enabled: true },
+      payment_intent_data: { metadata: { operation_id: invoice.id, company_id: invoice.company_id || "" } },
+      invoice_creation: { enabled: true, invoice_data: { metadata: { operation_id: invoice.id, company_id: invoice.company_id || "" } } },
       success_url: `${origin}/client-portal?tab=billing&invoice=${id}&payment=success&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${origin}/client-portal?tab=billing&invoice=${id}&payment=cancelled`,
     });

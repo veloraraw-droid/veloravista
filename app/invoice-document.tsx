@@ -1,5 +1,6 @@
 "use client";
 import { invoiceStatusLabel } from "../lib/interac";
+import { InvoiceItem, cents, dollars } from "../lib/invoice-math";
 
 export type InvoiceData = {
   number?: string;
@@ -7,6 +8,10 @@ export type InvoiceData = {
   client?: string;
   email?: string;
   description?: string;
+  items?: InvoiceItem[];
+  taxMode?: string;
+  taxAmount?: number;
+  taxValue?: number;
   subtotal?: number | string;
   tax?: number | string;
   total?: number | string;
@@ -23,7 +28,8 @@ const cad = (value: unknown) => new Intl.NumberFormat("en-CA", { style: "currenc
 export function InvoiceDocument({ invoice }: { invoice: InvoiceData }) {
   const subtotal = Number(invoice.subtotal || invoice.total || 0);
   const total = Number(invoice.total || subtotal);
-  const taxAmount = Math.max(0, total - subtotal);
+  const taxAmount = invoice.taxAmount ?? Math.max(0, total - subtotal);
+  const items = invoice.items?.length ? invoice.items : [{description: invoice.description || "Creative production services", quantity: 1, unitPrice: subtotal}];
   return <article className="invoice-document" id="velora-invoice-document">
     <div className="invoice-brandline"><b>VELORA VISTA VISUALS</b><span>FILM · CONTENT · PHOTOGRAPHY</span></div>
     <header>
@@ -31,8 +37,8 @@ export function InvoiceDocument({ invoice }: { invoice: InvoiceData }) {
       <div><small>INVOICE</small><b>{invoice.number || invoice.invoiceNo || "DRAFT"}</b><p>Issued {new Date().toLocaleDateString("en-CA", { year:"numeric", month:"long", day:"numeric" })}<br/>Due {invoice.due || "On receipt"}</p><span className={`invoice-status ${invoice.status || "draft"}`}>{invoiceStatusLabel(invoice.status, invoice.paymentMethod)}</span></div>
     </header>
     <section className="invoice-billto"><small>BILL TO</small><h3>{invoice.client || "Client"}</h3><p>{invoice.email || ""}</p></section>
-    <table><thead><tr><th>Service description</th><th>Amount</th></tr></thead><tbody><tr><td>{invoice.description || "Creative production services"}</td><td>{cad(subtotal)}</td></tr><tr><td>GST / tax ({Number(invoice.tax || 0)}%)</td><td>{cad(taxAmount)}</td></tr></tbody><tfoot><tr><th>Total CAD</th><th>{cad(total)}</th></tr></tfoot></table>
-    {invoice.status === "paid" && invoice.paymentMethod === "interac_etransfer" && <section className="invoice-notes"><b>Payment received by Interac e-Transfer</b><p>{invoice.paidAt ? new Date(invoice.paidAt).toLocaleDateString("en-CA") : ""}</p></section>}
+    <table><thead><tr><th>Item / service</th><th>Qty</th><th>Unit price</th><th>Amount</th></tr></thead><tbody>{items.map((item, index) => <tr key={index}><td>{item.description}</td><td>{item.quantity}</td><td>{cad(item.unitPrice)}</td><td>{cad(dollars(Math.round(item.quantity * cents(Number(item.unitPrice)))))}</td></tr>)}</tbody><tfoot><tr><th colSpan={3}>Subtotal</th><th>{cad(subtotal)}</th></tr><tr><th colSpan={3}>{invoice.taxMode === "amount" ? "Tax" : `GST / tax (${Number(invoice.taxValue ?? invoice.tax ?? 0)}%)`}</th><th>{cad(taxAmount)}</th></tr><tr><th colSpan={3}>Total CAD</th><th>{cad(total)}</th></tr></tfoot></table>
+    {invoice.status === "paid" && invoice.paymentMethod && <section className="invoice-notes"><b>{invoiceStatusLabel("paid", invoice.paymentMethod)}</b><p>{invoice.paidAt ? new Date(invoice.paidAt).toLocaleDateString("en-CA") : ""}</p></section>}
     {invoice.notes ? <section className="invoice-notes"><small>NOTES</small><p>{invoice.notes}</p></section> : null}
     <footer><div><b>THANK YOU FOR CREATING WITH US.</b><p>Questions about this invoice? Contact info@veloravistavisuals.com or call 778-820-0485.</p></div><span>VELORAVISTAVISUALS.COM</span></footer>
   </article>;

@@ -5,6 +5,7 @@ import Stripe from "stripe";
 import { Resend } from "resend";
 import { sendPortalInvitation } from "../../../lib/auth-email";
 import { canAccessModule, moduleForKind } from "../../../lib/permissions";
+import { normalizeInvoice } from "../../../lib/invoice-math";
 import { sendTransactionalEmail } from "../../../lib/transactional-email";
 
 const bodySchema = z.object({ kind: z.string().min(1).max(64), data: z.record(z.string(), z.unknown()) });
@@ -75,6 +76,10 @@ export async function POST(request: NextRequest) {
   const parsed = bodySchema.safeParse(await request.json());
   if (!parsed.success) return NextResponse.json({ error: "Invalid record" }, { status: 400 });
   const { kind, data } = parsed.data;
+  if (["financial_income", "financial_expense"].includes(kind)) return NextResponse.json({ error: "Use the finance workspace." }, { status: 400 });
+  if (kind === "invoice") {
+    try { Object.assign(data, normalizeInvoice(data), { status: "draft" }); } catch(error) { return NextResponse.json({error:error instanceof Error ? error.message : "Invalid invoice."},{status:400}); }
+  }
   let deliveryWarning = "";
   if (!canUse(auth.profile, kind)) return NextResponse.json({ error: "You do not have permission to use this area" }, { status: 403 });
   if (kind === "booking" || kind === "meeting") {
@@ -244,9 +249,28 @@ export async function PATCH(request: NextRequest) {
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const parsed = patchSchema.safeParse(await request.json());
   if (!parsed.success) return NextResponse.json({ error: "Invalid update" }, { status: 400 });
-  const { data: current } = await auth.supabase.from("operations").select("kind,company_id").eq("id", parsed.data.id).single();
+  const { data: current } = await auth.supabase.from("operations").select("kind,company_id,data,updated_at").eq("id", parsed.data.id).single();
   if (!current || !canUse(auth.profile, current.kind)) return NextResponse.json({ error: "You do not have permission to update this area" }, { status: 403 });
-  const { error } = await auth.supabase.from("operations").update({ data: parsed.data.data, status: parsed.data.status || "active", updated_by: auth.profile.id }).eq("id", parsed.data.id);
+  if (["financial_income", "financial_expense"].includes(current.kind)) return NextResponse.json({error:"Use the finance workspace."},{status:400});
+  if (current.kind === "invoice") {
+    if (current.data.status === "paid") return NextResponse.json({error:"Paid invoices cannot be edited."},{status:409});
+    if (parsed.data.data.status === "paid") return NextResponse.json({error:"Use Mark invoice paid to record the payment method and date."},{status:400});
+    try { Object.assign(parsed.data.data, normalizeInvoice(parsed.data.data)); } catch(error) { return NextResponse.json({error:error instanceof Error ? error.message : "Invalid invoice."},{status:400}); }
+    // Expire a previous checkout before changing its amount or voiding the invoice.
+    if (current.data.stripeCheckoutSessionId) {
+      try {
+        const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
+        const session = await stripe.checkout.sessions.retrieve(current.data.stripeCheckoutSessionId);
+        if (session.status === "complete" || session.payment_status === "paid") return NextResponse.json({error:"Payment is already submitted. Wait for its confirmation."},{status:409});
+        if (session.status === "open") await stripe.checkout.sessions.expire(session.id);
+        parsed.data.data.stripeCheckoutSessionId = ""; parsed.data.data.paymentLink = "";
+      } catch { return NextResponse.json({error:"Could not verify the existing checkout. Please retry."},{status:503}); }
+    }
+    // Only this payment endpoint may change receipt metadata.
+    for (const key of ["paidAt","paidDate","paymentMethod","paymentRecordedBy","paymentRecordedAt","paymentReference","paymentNotes"]) delete parsed.data.data[key];
+  }
+  const { data: saved, error } = await auth.supabase.from("operations").update({ data: parsed.data.data, status: parsed.data.status || "active", updated_by: auth.profile.id, updated_at:new Date().toISOString() }).eq("id", parsed.data.id).eq("updated_at",current.updated_at).select("id").maybeSingle();
+  if (!error && !saved) return NextResponse.json({error:"Record changed. Refresh and retry."},{status:409});
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   if (current?.company_id && ["project","invoice","contract","subscription","booking","meeting"].includes(current.kind)) {
     const admin = createAdminSupabase();
@@ -261,8 +285,10 @@ export async function DELETE(request: NextRequest) {
   if (!auth || !["owner","admin"].includes(auth.profile.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const id = new URL(request.url).searchParams.get("id");
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
-  const { data: current } = await auth.supabase.from("operations").select("kind").eq("id", id).single();
+  const { data: current } = await auth.supabase.from("operations").select("kind,data").eq("id", id).single();
   if (!current || !canUse(auth.profile, current.kind)) return NextResponse.json({ error: "You do not have permission to delete this record" }, { status: 403 });
+  if (["financial_income", "financial_expense"].includes(current.kind)) return NextResponse.json({error:"Use the finance workspace."},{status:400});
+  if (current.kind === "invoice" && current.data.status === "paid") return NextResponse.json({error:"Paid invoices are retained for payment records and cannot be deleted."},{status:409});
   const { error } = await auth.supabase.from("operations").update({ status: "archived", updated_by: auth.profile.id }).eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   return NextResponse.json({ ok: true });
