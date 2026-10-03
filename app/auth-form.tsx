@@ -20,13 +20,18 @@ export function AuthForm({ team = false }: { team?: boolean }) {
       setBusy(false);
       return;
     }
-    const supabase = createBrowserSupabase();
     if (password) {
+      const supabase = createBrowserSupabase();
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) setMessage(error.message); else location.assign(next);
     } else {
-      const { error } = await supabase.auth.signInWithOtp({ email, options: { shouldCreateUser: false, emailRedirectTo: `${location.origin}/auth/callback?next=${encodeURIComponent(next)}` } });
-      setMessage(error ? error.message : "Secure sign-in link sent. Check your email.");
+      const response = await fetch("/api/auth/magic-link", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email, portal: team ? "team" : "client", next }),
+      });
+      const result = await response.json().catch(() => ({ ok: false, error: "Could not send the sign-in email." }));
+      setMessage(result.ok ? "Secure sign-in link sent. Check your email." : result.error || "Could not send the sign-in email.");
     }
     setBusy(false);
   }
