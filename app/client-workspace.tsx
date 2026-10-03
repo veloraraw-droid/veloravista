@@ -3,6 +3,8 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Logo } from "./components";
 import { createBrowserSupabase } from "../lib/supabase/client";
 import { InvoiceDocument, printInvoice } from "./invoice-document";
+import { InteracPayment } from "./interac-payment";
+import { invoiceStatusLabel } from "../lib/interac";
 type RecordItem = {
   id: string;
   kind: string;
@@ -327,13 +329,7 @@ export function ClientWorkspace({ initialTab, initialInvoiceId, initialContractI
                   <p>{x.data.notes}</p>
                 </div>
                 <b>${x.data.total || x.data.amount || 0}</b>
-                {x.data.publicInvoiceUrl ? (
-                  <a href={x.data.publicInvoiceUrl}>View & pay ↗</a>
-                ) : x.data.paymentLink ? (
-                  <a href={x.data.paymentLink}>Pay securely ↗</a>
-                ) : (
-                  <span>{x.data.status}</span>
-                )}
+                <span>{invoiceStatusLabel(x.data.status, x.data.paymentMethod)}</span>
                 <button className="invoice-view-button" onClick={()=>setSelectedInvoice(x)}>View invoice ↗</button>
               </div>
             ))}
@@ -478,7 +474,7 @@ export function ClientWorkspace({ initialTab, initialInvoiceId, initialContractI
           </section>
         )}
       </section>
-      {selectedInvoice&&<div className="portal-modal invoice-portal-modal" role="dialog" aria-modal="true" aria-label={`Invoice ${selectedInvoice.data.number}`}><section><button className="modal-close" onClick={()=>setSelectedInvoice(null)}>Close ×</button><InvoiceDocument invoice={selectedInvoice.data}/><div className="invoice-client-actions"><button onClick={()=>printInvoice(selectedInvoice.data)}>Print / save PDF</button>{selectedInvoice.data.status==="paid"?<>{selectedInvoice.data.stripeInvoiceUrl&&<a href={selectedInvoice.data.stripeInvoiceUrl} target="_blank" rel="noreferrer">View paid invoice ↗</a>}{selectedInvoice.data.receiptUrl&&<a href={selectedInvoice.data.receiptUrl} target="_blank" rel="noreferrer">View receipt ↗</a>}</>:<form action={`/api/invoices/${selectedInvoice.id}/checkout`} method="post"><button type="submit">Pay now ↗</button></form>}</div></section></div>}
+      {selectedInvoice&&<div className="portal-modal invoice-portal-modal" role="dialog" aria-modal="true" aria-label={`Invoice ${selectedInvoice.data.number}`}><section><button className="modal-close" onClick={()=>setSelectedInvoice(null)}>Close ×</button><InvoiceDocument invoice={selectedInvoice.data}/><div className="invoice-client-actions"><button onClick={()=>printInvoice(selectedInvoice.data)}>Print / save PDF</button>{selectedInvoice.data.status==="paid"?<>{selectedInvoice.data.stripeInvoiceUrl&&<a href={selectedInvoice.data.stripeInvoiceUrl} target="_blank" rel="noreferrer">View paid invoice ↗</a>}{selectedInvoice.data.receiptUrl&&<a href={selectedInvoice.data.receiptUrl} target="_blank" rel="noreferrer">View receipt ↗</a>}</>:selectedInvoice.data.status === "etransfer_pending" || selectedInvoice.data.status === "void" ? null : <form action={`/api/invoices/${selectedInvoice.id}/checkout`} method="post"><button type="submit">Pay by card</button></form>}</div>{!["paid", "void"].includes(selectedInvoice.data.status) && <InteracPayment key={selectedInvoice.id} id={selectedInvoice.id} invoice={selectedInvoice.data} onUpdated={(data) => { setSelectedInvoice({ ...selectedInvoice, data }); void load(); }}/>}</section></div>}
       {selectedContract&&<div className="portal-modal invoice-portal-modal contract-review-modal" role="dialog" aria-modal="true" aria-label={`Contract ${selectedContract.data.number}`}><section><button className="modal-close" onClick={()=>setSelectedContract(null)}>Close ×</button><div className="contract-document"><small>{selectedContract.data.number} · {selectedContract.data.status}</small><h2>{selectedContract.data.title}</h2><p>Prepared for <b>{selectedContract.data.client}</b></p><div>{selectedContract.data.terms||"This contract is awaiting agreement language from Velora Vista Visuals Ltd."}</div><footer>Velora Vista Visuals Ltd. · Electronic signature required</footer></div>{selectedContract.data.status==="signed"?<div className="contract-signature-record"><small>SIGNATURE RECORD</small><b>{selectedContract.data.signedName||"Signed electronically"}</b>{selectedContract.data.signedEmail&&<span>{selectedContract.data.signedEmail}</span>}<time>{selectedContract.data.signedAt?new Date(selectedContract.data.signedAt).toLocaleString("en-CA"):""}</time><span>Contract {selectedContract.data.number}</span></div>:<form className="contract-sign-form" onSubmit={(e)=>void signContract(e,selectedContract)}><p>Read the full contract above. Enter your full legal name to sign electronically.</p><label>Full legal name<input name="signature" autoComplete="name" required minLength={2}/></label><button type="submit">Sign contract ↗</button></form>}{contractNotice&&<p className="contract-notice" role="status">{contractNotice}</p>}</section></div>}
     </main>
   );

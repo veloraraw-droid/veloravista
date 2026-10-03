@@ -14,6 +14,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (!user.companyId || invoice.company_id !== user.companyId) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   if (invoice.data?.status === "paid" || invoice.status === "paid") return NextResponse.redirect(new URL(`/client-portal?tab=billing&invoice=${id}&payment=success`, request.url), 303);
 
+  if (["etransfer_pending", "void"].includes(invoice.data?.status)) return NextResponse.redirect(new URL(`/client-portal?tab=billing&invoice=${id}`, request.url), 303);
+
   const total = Number(invoice.data?.total);
   if (!Number.isFinite(total) || total <= 0) return NextResponse.json({ error: "Invoice total is invalid" }, { status: 400 });
   const origin = process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin;

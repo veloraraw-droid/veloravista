@@ -1,4 +1,5 @@
 "use client";
+import { invoiceStatusLabel } from "../lib/interac";
 import {
   FormEvent,
   ReactNode,
@@ -260,6 +261,16 @@ export function AdminPortal({
     const r = await fetch("/api/ops", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: record.id, data: { ...record.data, ...changes }, status }) });
     if (!r.ok) { finishAction("Could not update this record.", false); return; }
     await load(); setModal(""); finishAction("Updated everywhere in real time.");
+  }
+  async function confirmInterac(record: Rec) {
+    if (!confirm(`Confirm you received ${money(record.data.total)} for ${record.data.number} in the company bank account?`)) return;
+    if (!beginAction("Confirming e-Transfer receipt…")) return;
+    try {
+      const response = await fetch(`/api/invoices/${record.id}/interac`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "confirm" }) });
+      const result = await response.json();
+      if (!response.ok) { finishAction(result.error || "Could not confirm payment.", false); return; }
+      await load(); setModal(""); finishAction(result.warning || "Invoice paid by Interac e-Transfer. Confirmation emails sent.", !result.warning);
+    } catch { finishAction("Could not confirm payment. Please try again.", false); }
   }
   async function resendInvoice(record: Rec) {
     if (!record.data.email) { notify("Add a customer email to this invoice first."); return; }
@@ -1128,7 +1139,7 @@ export function AdminPortal({
                     </div>
                     <strong>{money(x.data.total)}</strong>
                     <span className={`status-pill ${x.data.status}`}>
-                      {x.data.status}
+                      {invoiceStatusLabel(x.data.status, x.data.paymentMethod)}
                     </span>
                     <div className="invoice-row-actions">
                       <button onClick={() => { setSelected(x); setModal("invoiceview"); }}>Open ↗</button>
@@ -2047,7 +2058,9 @@ export function AdminPortal({
       {modal === "invoiceview" && selected && (
         <Modal title={selected.data.number} onClose={() => setModal("")} wide>
           <InvoiceDocument invoice={selected.data} />
+          {selected.data.status === "etransfer_pending" && <p>Customer reported an e-Transfer. Verify receipt in the company bank account before confirming.</p>}
           <div className="account-actions">
+            {selected.data.status === "etransfer_pending" && <button onClick={() => void confirmInterac(selected)}>Confirm e-Transfer received</button>}
             <button onClick={() => printInvoice(selected.data)}>Print / save PDF</button>
             <button onClick={() => setModal("invoiceedit")}>Edit invoice</button>
             <a
@@ -2070,7 +2083,7 @@ export function AdminPortal({
             <div><Field label="Customer" name="client" required><input name="client" required defaultValue={selected.data.client}/></Field><Field label="Billing email" name="email" type="email" required><input name="email" type="email" required defaultValue={selected.data.email}/></Field></div>
             <Field label="Work performed / line items" name="description"><textarea name="description" rows={5} required defaultValue={selected.data.description}/></Field>
             <div><Field label="Subtotal CAD" name="subtotal" type="number" required><input name="subtotal" type="number" step="0.01" required defaultValue={selected.data.subtotal}/></Field><Field label="Tax %" name="tax" type="number"><input name="tax" type="number" step="0.01" defaultValue={selected.data.tax || 0}/></Field></div>
-            <div><Field label="Due date" name="due" type="date"><input name="due" type="date" defaultValue={selected.data.due}/></Field><Field label="Status" name="status"><select name="status" defaultValue={selected.data.status || "draft"}><option value="draft">Draft</option><option value="sent">Sent</option><option value="paid">Paid</option><option value="overdue">Overdue</option><option value="void">Void</option></select></Field></div>
+            <div><Field label="Due date" name="due" type="date"><input name="due" type="date" defaultValue={selected.data.due}/></Field><Field label="Status" name="status"><select name="status" defaultValue={selected.data.status || "draft"}><option value="draft">Draft</option><option value="sent">Sent</option><option value="etransfer_pending">e-Transfer pending confirmation</option><option value="paid">Paid</option><option value="overdue">Overdue</option><option value="void">Void</option></select></Field></div>
             <Field label="Payment link" name="paymentLink" type="url"><input name="paymentLink" type="url" defaultValue={selected.data.paymentLink || ""}/></Field>
             <Field label="Notes" name="notes"><textarea name="notes" rows={3} defaultValue={selected.data.notes || ""}/></Field>
             <button>Save invoice changes ↗</button>

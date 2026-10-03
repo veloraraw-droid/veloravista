@@ -1,4 +1,5 @@
 "use client";
+import { invoiceStatusLabel } from "../lib/interac";
 
 export type InvoiceData = {
   number?: string;
@@ -13,6 +14,8 @@ export type InvoiceData = {
   status?: string;
   notes?: string;
   paymentLink?: string;
+  paymentMethod?: string;
+  paidAt?: string;
 };
 
 const cad = (value: unknown) => new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD" }).format(Number(value || 0));
@@ -25,10 +28,11 @@ export function InvoiceDocument({ invoice }: { invoice: InvoiceData }) {
     <div className="invoice-brandline"><b>VELORA VISTA VISUALS</b><span>FILM · CONTENT · PHOTOGRAPHY</span></div>
     <header>
       <div><small>FROM</small><b>VELORA VISTA VISUALS LTD.</b><p>Vancouver, British Columbia<br/>info@veloravistavisuals.com<br/>+1 778 820 0485</p></div>
-      <div><small>INVOICE</small><b>{invoice.number || invoice.invoiceNo || "DRAFT"}</b><p>Issued {new Date().toLocaleDateString("en-CA", { year:"numeric", month:"long", day:"numeric" })}<br/>Due {invoice.due || "On receipt"}</p><span className={`invoice-status ${invoice.status || "draft"}`}>{invoice.status || "Draft"}</span></div>
+      <div><small>INVOICE</small><b>{invoice.number || invoice.invoiceNo || "DRAFT"}</b><p>Issued {new Date().toLocaleDateString("en-CA", { year:"numeric", month:"long", day:"numeric" })}<br/>Due {invoice.due || "On receipt"}</p><span className={`invoice-status ${invoice.status || "draft"}`}>{invoiceStatusLabel(invoice.status, invoice.paymentMethod)}</span></div>
     </header>
     <section className="invoice-billto"><small>BILL TO</small><h3>{invoice.client || "Client"}</h3><p>{invoice.email || ""}</p></section>
     <table><thead><tr><th>Service description</th><th>Amount</th></tr></thead><tbody><tr><td>{invoice.description || "Creative production services"}</td><td>{cad(subtotal)}</td></tr><tr><td>GST / tax ({Number(invoice.tax || 0)}%)</td><td>{cad(taxAmount)}</td></tr></tbody><tfoot><tr><th>Total CAD</th><th>{cad(total)}</th></tr></tfoot></table>
+    {invoice.status === "paid" && invoice.paymentMethod === "interac_etransfer" && <section className="invoice-notes"><b>Payment received by Interac e-Transfer</b><p>{invoice.paidAt ? new Date(invoice.paidAt).toLocaleDateString("en-CA") : ""}</p></section>}
     {invoice.notes ? <section className="invoice-notes"><small>NOTES</small><p>{invoice.notes}</p></section> : null}
     <footer><div><b>THANK YOU FOR CREATING WITH US.</b><p>Questions about this invoice? Contact info@veloravistavisuals.com or call 778-820-0485.</p></div><span>VELORAVISTAVISUALS.COM</span></footer>
   </article>;
